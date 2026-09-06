@@ -1,6 +1,7 @@
 // Single Vercel function that handles every /api/* route (see vercel.json).
 import { rpc, HttpError } from '../lib/db.js';
 import { aiEnabled, estimateCupMl } from '../lib/estimate.js';
+import * as tg from '../lib/telegram.js';
 
 const COOKIE = 'sip';
 const COOKIE_MAX_AGE = 400 * 24 * 3600;     // browsers cap cookies at 400 days
@@ -41,7 +42,7 @@ async function body(req) {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const isoDay = (s) => (ISO_DAY.test(s || '') ? s : new Date().toISOString().slice(0, 10));
-const withAi = (user) => ({ ...user, ai: aiEnabled() });
+const withAi = (user) => ({ ...user, ai: aiEnabled(), telegram: tg.telegramEnabled() });
 
 function parsePhoto(dataUrl) {
   const m = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
@@ -85,7 +86,53 @@ route('POST', /^\/drinks$/, async (req) => {
     p_token: token, p_day: isoDay(b.day), p_ml: ml, p_source: source, p_label: label,
     p_media_type: photo.mediaType, p_photo_b64: photo.b64,
   });
+  if (tg.telegramEnabled()) await notifyCup(token, drink.id);
   return { drink };
+});
+
+// Best effort: a failed Telegram message must never fail the cup log.
+async function notifyCup(token, drinkId) {
+  try {
+    const ctx = await rpc('sip_notify_context', { p_token: token, p_drink_id: drinkId });
+    if (ctx && ctx.chat_id) await tg.send(ctx.chat_id, tg.cupMessage(ctx));
+  } catch (e) { console.error('telegram notify failed:', e.message); }
+}
+
+// Telegram webhook: "/link <code>", "/unlink", "/board" sent in a group chat.
+route('POST', /^\/telegram$/, async (req) => {
+  if (!tg.telegramEnabled()) throw new HttpError(404, 'Telegram not configured');
+  if (req.headers['x-telegram-bot-api-secret-token'] !== tg.webhookSecret()) throw new HttpError(403, 'Bad secret');
+  const msg = (await body(req)).message;
+  const text = (msg && msg.text || '').trim();
+  const chatId = msg && msg.chat && msg.chat.id;
+  const m = /^\/(link|unlink|board|today|start|help)(?:@\w+)?(?:\s+(.*))?$/s.exec(text);
+  if (!chatId || !m) return { ok: true };
+  const [, cmd, arg] = m;
+  let reply;
+  try {
+    if (cmd === 'link') {
+      if (!arg) reply = 'Usage: /link &lt;group code&gt; (the code you use in the app)';
+      else { const g = await rpc('sip_link_telegram', { p_code: arg, p_chat_id: chatId }); reply = `Linked to <b>${g.code}</b> (${g.members} member${g.members === 1 ? '' : 's'}). Every finished cup will be posted here. Send /board for the leaderboard.`; }
+    } else if (cmd === 'unlink') {
+      const g = await rpc('sip_unlink_telegram', { p_chat_id: chatId });
+      reply = g.code ? `Unlinked from <b>${g.code}</b>.` : 'This chat was not linked.';
+    } else if (cmd === 'board' || cmd === 'today') {
+      const b = await rpc('sip_board_by_chat', { p_chat_id: chatId, p_day: isoDay(null) });
+      reply = b ? tg.boardMessage(b) : 'This chat is not linked yet. Send /link &lt;group code&gt;.';
+    } else reply = 'Sip Squad bot. Commands: /link &lt;group code&gt;, /board, /unlink.';
+  } catch (e) { reply = e instanceof HttpError ? e.message : 'Something broke.'; }
+  await tg.send(chatId, reply).catch((e) => console.error('telegram reply failed:', e.message));
+  return { ok: true };
+});
+
+// One-time webhook registration. Knowing the bot token proves you own the bot.
+route('GET', /^\/telegram\/setup$/, async (req, _res, _m, url) => {
+  if (!tg.telegramEnabled()) throw new HttpError(404, 'Set TELEGRAM_BOT_TOKEN on Vercel first');
+  if (url.searchParams.get('token') !== process.env.TELEGRAM_BOT_TOKEN) throw new HttpError(403, 'Wrong token');
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  await tg.setWebhook(`https://${host}/api/telegram`);
+  const me = await tg.getMe();
+  return { ok: true, bot: `@${me.username}`, webhook: `https://${host}/api/telegram`, next: `Add @${me.username} to your Telegram group and send: /link <group code>` };
 });
 
 route('PATCH', /^\/drinks\/(\d+)$/, async (req, _res, m) => {

@@ -32,6 +32,32 @@ Every log needs a photo. The amount comes from, in order:
 
 Without an API key the app still works and uses your default cup.
 
+## Streaks
+
+A streak 🔥 is the number of days in a row you hit your daily goal. It shows
+next to your name on the leaderboard and under your ring. Today does not
+break it until midnight, so a streak of 3 stays 3 while you are still drinking.
+
+## Telegram notifications
+
+Optional. When linked, the bot posts to your Telegram group every time someone
+finishes a cup, calls out when someone hits their goal or takes the lead, and
+answers `/board` with the current leaderboard.
+
+Setup, once, about five minutes:
+
+1. In Telegram, message **@BotFather**, send `/newbot`, pick a name. Copy the token.
+2. In Vercel: Project Settings > Environment Variables, add `TELEGRAM_BOT_TOKEN`
+   with that token, then redeploy (Deployments > ... > Redeploy).
+3. Open `https://<your app>/api/telegram/setup?token=<the token>` once in a
+   browser. It registers the webhook and tells you the bot's username.
+4. Add the bot to your friends' Telegram group and send `/link <group code>`
+   in that chat. Done. `/unlink` removes it, `/board` shows the leaderboard.
+
+WhatsApp and SMS are not built in: WhatsApp needs a Meta Business account
+with approved message templates, SMS needs a paid provider such as Twilio.
+Both are possible later behind the same notification hook.
+
 ## Architecture
 
 ```
@@ -39,7 +65,9 @@ public/          The app: plain HTML, CSS, JS. No build step. PWA manifest + ser
 api/index.js     One Vercel function for every /api/* route (see vercel.json rewrites).
 lib/db.js        Calls Supabase PostgREST RPC functions with the publishable key.
 lib/estimate.js  Optional Claude vision call.
-sql/001_init.sql The whole database: tables in schema `sip`, API functions in `public.sip_*`.
+sql/001_init.sql The database: tables in schema `sip`, API functions in `public.sip_*`.
+sql/002_...sql   Streaks and Telegram linking.
+lib/telegram.js  Telegram bot messages and webhook helpers.
 dev.js           Local dev server (npm run dev).
 test.js          End-to-end API test (npm test).
 ```
@@ -70,12 +98,13 @@ Environment variables (all optional):
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | Enables the AI cup size estimate |
+| `TELEGRAM_BOT_TOKEN` | Enables Telegram group notifications |
 | `SUPABASE_URL` | Override the Supabase project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | Override the publishable key |
 
 ## Database setup
 
-Everything is in `sql/001_init.sql`. Run it against a Supabase project (SQL
+Run `sql/001_init.sql` then `sql/002_streaks_telegram.sql` against a Supabase project (SQL
 editor or `supabase db push`) and point the app at that project. To remove it
 completely:
 
@@ -99,6 +128,8 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 | PATCH / DELETE | `/api/drinks/:id` | Fix the amount or remove (own cups only) |
 | GET | `/api/board?range=today\|week\|all&day=YYYY-MM-DD` | Leaderboard, feed, your daily totals |
 | GET | `/api/photo/:id` | A cup photo |
+| POST | `/api/telegram` | Telegram webhook (`/link <code>`, `/board`, `/unlink`) |
+| GET | `/api/telegram/setup?token=` | One-time webhook registration |
 
 Days are counted in each person's local time (the phone sends its local date),
 so a cup at 11:30 pm counts for that person's today. Weeks start Monday.

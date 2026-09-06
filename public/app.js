@@ -82,7 +82,9 @@ function render({ board, feed, my_days }) {
   const todayCups = feed.filter((d) => d.user_id === me.id && d.day === today).length;
   const pct = Math.min(100, Math.round((todayMl / me.goal_ml) * 100));
   $('today-ml').textContent = todayMl;
-  $('today-cups').textContent = todayCups ? `${todayCups} cup${todayCups === 1 ? '' : 's'}` : 'no cups yet';
+  const myRow = board.find((b) => b.id === me.id);
+  const streak = myRow ? myRow.streak : 0;
+  $('today-cups').textContent = (todayCups ? `${todayCups} cup${todayCups === 1 ? '' : 's'}` : 'no cups yet') + (streak > 0 ? ` · 🔥 ${streak}-day streak` : '');
   const ring = $('ring');
   ring.style.setProperty('--p', pct);
   ring.classList.toggle('done', todayMl >= me.goal_ml);
@@ -91,7 +93,7 @@ function render({ board, feed, my_days }) {
   $('board').innerHTML = board.length ? board.map((b, i) => `
     <li class="${i === 0 && b.ml > 0 ? 'first' : ''} ${b.id === me.id ? 'me' : ''}">
       <div class="rank">${i === 0 && b.ml > 0 ? '🏆' : i + 1}</div>
-      <div><div class="name">${esc(b.name)}</div><div class="bar"><i style="width:${(b.ml / max) * 100}%"></i></div></div>
+      <div><div class="name">${esc(b.name)}${b.streak > 0 ? ` <span class="streak">🔥${b.streak}</span>` : ''}</div><div class="bar"><i style="width:${(b.ml / max) * 100}%"></i></div></div>
       <div class="ml">${b.ml} ml<span class="cups">${b.cups} cup${b.cups === 1 ? '' : 's'}</span></div>
     </li>`).join('') : '<div class="empty">Nobody here yet.</div>';
 
@@ -186,6 +188,10 @@ $('tabs').addEventListener('click', (e) => {
 $('settings-btn').addEventListener('click', () => {
   $('set-cup').value = me.cup_ml; $('set-goal').value = me.goal_ml;
   $('set-cup-hint').textContent = me.ai ? 'Used only if the photo guess fails.' : 'Every cup counts as this unless you adjust it.';
+  $('tg').hidden = !me.telegram;
+  $('tg-status').textContent = me.telegram_linked
+    ? 'Linked. Every finished cup is posted to your Telegram group. Send /board there for the leaderboard.'
+    : `Not linked. Add the Sip Squad bot to your Telegram group and send: /link ${me.group}`;
   $('settings').hidden = false;
 });
 $('settings').addEventListener('click', (e) => { if (e.target === $('settings')) $('settings').hidden = true; });
