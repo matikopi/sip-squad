@@ -1,0 +1,211 @@
+// Sip Squad client. Plain JS, no build step.
+const $ = (id) => document.getElementById(id);
+const store = {
+  get token() { try { return localStorage.getItem('token'); } catch { return null; } },
+  set token(v) { try { v ? localStorage.setItem('token', v) : localStorage.removeItem('token'); } catch {} },
+};
+let me = null, range = 'today', lastLogged = null, pollTimer = null;
+const CHIP_SIZES = [150, 250, 350, 500, 750, 1000];
+
+// Local calendar day, so a cup at 11pm counts for today in YOUR timezone.
+const localDay = (d = new Date()) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const fmtDay = (day) => day === localDay() ? 'today' : new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'short' });
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { 'content-type': 'application/json', ...(store.token ? { 'x-token': store.token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+function toast(msg, ms = 2200) {
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(t._t); t._t = setTimeout(() => (t.hidden = true), ms);
+}
+
+// ------------------------------------------------------------- screens
+function show(screen) {
+  $('join').hidden = screen !== 'join';
+  $('home').hidden = screen !== 'home';
+}
+
+$('join-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  $('join-error').textContent = '';
+  try {
+    const { token, user } = await api('POST', '/api/join', { name: f.get('name'), group: f.get('group') });
+    store.token = token; me = user;
+    enterHome();
+  } catch (err) { $('join-error').textContent = err.message; }
+});
+
+function enterHome() {
+  show('home');
+  $('group-code').textContent = me.group;
+  $('goal-ml').textContent = me.goal_ml;
+  $('snap-hint').textContent = me.ai
+    ? 'Snap the empty cup. The app guesses the size, you can adjust.'
+    : `Snap the empty cup. Counts as ${me.cup_ml} ml unless you adjust.`;
+  refresh();
+  clearInterval(pollTimer);
+  pollTimer = setInterval(refresh, 30000);
+  document.addEventListener('visibilitychange', () => !document.hidden && refresh());
+}
+
+// ------------------------------------------------------------- data
+async function refresh() {
+  if (!me) return;
+  try {
+    const data = await api('GET', `/api/board?range=${range}&day=${localDay()}`);
+    render(data);
+    $('status').textContent = '';
+  } catch (err) {
+    if (/sign in/i.test(err.message)) { store.token = null; me = null; show('join'); return; }
+    $('status').textContent = err.message;
+  }
+}
+
+function render({ board, feed, my_days }) {
+  const today = localDay();
+  const mine = (my_days || []).find((d) => d.day === today);
+  const todayMl = mine ? mine.ml : 0;
+  const todayCups = feed.filter((d) => d.user_id === me.id && d.day === today).length;
+  const pct = Math.min(100, Math.round((todayMl / me.goal_ml) * 100));
+  $('today-ml').textContent = todayMl;
+  $('today-cups').textContent = todayCups ? `${todayCups} cup${todayCups === 1 ? '' : 's'}` : 'no cups yet';
+  const ring = $('ring');
+  ring.style.setProperty('--p', pct);
+  ring.classList.toggle('done', todayMl >= me.goal_ml);
+
+  const max = Math.max(1, ...board.map((b) => b.ml));
+  $('board').innerHTML = board.length ? board.map((b, i) => `
+    <li class="${i === 0 && b.ml > 0 ? 'first' : ''} ${b.id === me.id ? 'me' : ''}">
+      <div class="rank">${i === 0 && b.ml > 0 ? '🏆' : i + 1}</div>
+      <div><div class="name">${esc(b.name)}</div><div class="bar"><i style="width:${(b.ml / max) * 100}%"></i></div></div>
+      <div class="ml">${b.ml} ml<span class="cups">${b.cups} cup${b.cups === 1 ? '' : 's'}</span></div>
+    </li>`).join('') : '<div class="empty">Nobody here yet.</div>';
+
+  $('feed').innerHTML = feed.length ? feed.slice(0, 30).map((d) => `
+    <div class="cup" title="${esc(d.label || '')}">
+      <img src="/api/photo/${esc(d.photo_id)}" alt="" loading="lazy">
+      <div class="cap"><b>${esc(d.name)} · ${d.ml} ml</b>${fmtDay(d.day)} ${fmtTime(d.created_at)}</div>
+    </div>`).join('') : '<div class="empty">No cups logged in this range. Be the first.</div>';
+}
+
+// ------------------------------------------------------------- snap a cup
+$('photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const btn = document.querySelector('.snap');
+  btn.classList.add('busy');
+  $('snap-hint').textContent = me.ai ? 'Looking at your cup…' : 'Saving…';
+  try {
+    const photo = await shrink(file);
+    const { drink } = await api('POST', '/api/drinks', { photo, day: localDay() });
+    showLogged(drink, photo);
+    toast(`+${drink.ml} ml 💧`);
+    refresh();
+  } catch (err) { toast(err.message, 4000); }
+  finally {
+    btn.classList.remove('busy');
+    $('snap-hint').textContent = me.ai ? 'Snap the empty cup. The app guesses the size, you can adjust.'
+                                       : `Snap the empty cup. Counts as ${me.cup_ml} ml unless you adjust.`;
+  }
+});
+
+// Downscale on-device so uploads are ~100 KB instead of ~4 MB phone photos.
+function shrink(file, max = 800) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.75));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that photo')); };
+    img.src = url;
+  });
+}
+
+function showLogged(drink, photoUrl) {
+  lastLogged = drink;
+  $('logged').hidden = false;
+  $('logged-img').src = photoUrl;
+  const srcText = { ai: `Looks like ${drink.label || 'a cup'}`, default: 'Your default cup', manual: 'Set by you' }[drink.source] || '';
+  $('logged-title').textContent = `${drink.ml} ml logged`;
+  $('logged-sub').textContent = `${srcText}. Tap a size if it's off.`;
+  const sizes = CHIP_SIZES.includes(drink.ml) ? CHIP_SIZES : [...CHIP_SIZES, drink.ml].sort((a, b) => a - b);
+  $('logged-chips').innerHTML = sizes.map((ml) =>
+    `<button data-ml="${ml}" class="${ml === drink.ml ? 'active' : ''}">${ml}</button>`).join('');
+  $('logged').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+$('logged-chips').addEventListener('click', async (e) => {
+  const ml = Number(e.target.dataset.ml);
+  if (!ml || !lastLogged) return;
+  try {
+    const { drink } = await api('PATCH', `/api/drinks/${lastLogged.id}`, { ml });
+    lastLogged = { ...lastLogged, ...drink };
+    $('logged-title').textContent = `${drink.ml} ml logged`;
+    $('logged-sub').textContent = 'Set by you.';
+    [...$('logged-chips').children].forEach((b) => b.classList.toggle('active', Number(b.dataset.ml) === ml));
+    refresh();
+  } catch (err) { toast(err.message); }
+});
+$('logged-undo').addEventListener('click', async () => {
+  if (!lastLogged) return;
+  try { await api('DELETE', `/api/drinks/${lastLogged.id}`); toast('Removed'); }
+  catch (err) { toast(err.message); }
+  $('logged').hidden = true; lastLogged = null; refresh();
+});
+$('logged-done').addEventListener('click', () => { $('logged').hidden = true; lastLogged = null; });
+
+// ------------------------------------------------------------- tabs & settings
+$('tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  range = b.dataset.range;
+  [...$('tabs').children].forEach((x) => x.classList.toggle('active', x === b));
+  refresh();
+});
+
+$('settings-btn').addEventListener('click', () => {
+  $('set-cup').value = me.cup_ml; $('set-goal').value = me.goal_ml;
+  $('set-cup-hint').textContent = me.ai ? 'Used only if the photo guess fails.' : 'Every cup counts as this unless you adjust it.';
+  $('settings').hidden = false;
+});
+$('settings').addEventListener('click', (e) => { if (e.target === $('settings')) $('settings').hidden = true; });
+$('set-save').addEventListener('click', async () => {
+  try {
+    const { user } = await api('PATCH', '/api/me', { cup_ml: $('set-cup').value, goal_ml: $('set-goal').value });
+    me = user; $('settings').hidden = true; $('goal-ml').textContent = me.goal_ml;
+    toast('Saved'); refresh();
+  } catch (err) { toast(err.message); }
+});
+$('logout').addEventListener('click', async () => {
+  await api('POST', '/api/logout').catch(() => {});
+  store.token = null; me = null; clearInterval(pollTimer);
+  $('settings').hidden = true; show('join');
+});
+
+// ------------------------------------------------------------- boot
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+(async () => {
+  if (!store.token) return show('join');
+  try { me = (await api('GET', '/api/me')).user; enterHome(); }
+  catch { store.token = null; show('join'); }
+})();

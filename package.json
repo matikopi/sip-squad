@@ -1,0 +1,15 @@
+{
+  "name": "sip-squad",
+  "version": "0.2.0",
+  "description": "Snap your empty cup, track your water, compete with friends",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node dev.js",
+    "test": "node test.js"
+  },
+  "engines": { "node": "22.x" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0"
+  }
+}

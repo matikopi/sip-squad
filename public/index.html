@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0ea5e9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sip Squad">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/style.css">
+<title>Sip Squad</title>
+</head>
+<body>
+
+<!-- Join screen -->
+<section id="join" class="screen" hidden>
+  <div class="join-card">
+    <div class="logo">💧</div>
+    <h1>Sip Squad</h1>
+    <p class="muted">Finish a cup, snap the empty cup, climb the board.</p>
+    <form id="join-form">
+      <label>Your name<input name="name" maxlength="24" autocomplete="nickname" required placeholder="e.g. Mati"></label>
+      <label>Group code<input name="group" maxlength="32" autocomplete="off" required placeholder="share this with friends"></label>
+      <button class="btn primary" type="submit">Let's drink</button>
+      <p class="error" id="join-error"></p>
+    </form>
+    <p class="tiny muted">Same name + same code = same account. No passwords, friends only.</p>
+  </div>
+</section>
+
+<!-- Main screen -->
+<section id="home" class="screen" hidden>
+  <header>
+    <div>
+      <div class="tiny muted">group</div>
+      <div class="group-code" id="group-code"></div>
+    </div>
+    <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙️</button>
+  </header>
+
+  <div class="hero">
+    <div class="ring" id="ring" style="--p:0">
+      <div class="ring-inner">
+        <div class="big" id="today-ml">0</div>
+        <div class="tiny muted">of <span id="goal-ml">2000</span> ml today</div>
+        <div class="tiny" id="today-cups"></div>
+      </div>
+    </div>
+  </div>
+
+  <label class="btn snap" for="photo-input">
+    <span class="cam">📸</span>
+    <span>I finished a cup</span>
+    <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
+  </label>
+  <p class="tiny muted center" id="snap-hint"></p>
+
+  <!-- Just logged card -->
+  <div class="card logged" id="logged" hidden>
+    <img id="logged-img" alt="">
+    <div class="logged-body">
+      <div class="logged-title" id="logged-title"></div>
+      <div class="tiny muted" id="logged-sub"></div>
+      <div class="chips" id="logged-chips"></div>
+      <div class="row">
+        <button class="btn ghost small" id="logged-undo">Undo</button>
+        <button class="btn small" id="logged-done">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Leaderboard</h2>
+      <div class="tabs" id="tabs">
+        <button data-range="today" class="active">Today</button>
+        <button data-range="week">Week</button>
+        <button data-range="all">All</button>
+      </div>
+    </div>
+    <ol class="board" id="board"></ol>
+  </div>
+
+  <div class="card">
+    <h2>Recent cups</h2>
+    <div class="feed" id="feed"></div>
+  </div>
+
+  <p class="tiny muted center" id="status"></p>
+</section>
+
+<!-- Settings sheet -->
+<div class="sheet" id="settings" hidden>
+  <div class="sheet-body">
+    <h2>Settings</h2>
+    <label>Default cup size (ml)
+      <input id="set-cup" type="number" min="30" max="3000" step="10">
+      <span class="tiny muted" id="set-cup-hint"></span>
+    </label>
+    <label>Daily goal (ml)<input id="set-goal" type="number" min="250" max="10000" step="50"></label>
+    <div class="row">
+      <button class="btn ghost small" id="logout">Leave group</button>
+      <button class="btn small" id="set-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>
