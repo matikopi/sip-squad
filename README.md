@@ -54,6 +54,31 @@ Setup, once, about five minutes:
 4. Add the bot to your friends' Telegram group and send `/link <group code>`
    in that chat. Done. `/unlink` removes it, `/board` shows the leaderboard.
 
+## Push notifications
+
+Free, no third party, and the recommended option. When a friend overtakes you
+on today's board, a notification lands on your phone. Turn it on per device
+under Settings, and use "Send a test" to check it works.
+
+Payloads are encrypted (RFC 8291, aes128gcm) and requests are signed with a
+VAPID JWT (RFC 8292), using only `node:crypto`. There is no dependency and
+nothing to sign up for.
+
+Setup, once:
+
+1. Run `node scripts/vapid.js`. It prints a key pair.
+2. On Vercel, add `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` from that output,
+   and optionally `VAPID_SUBJECT` (a `mailto:` address push services can use
+   to contact you). Redeploy.
+3. Open the app, go to Settings, and tap Turn on.
+
+Keep the private key secret and out of the repository. Changing the pair
+invalidates every existing subscription, so everyone re-enables notifications.
+
+**On an iPhone the app must be on your home screen first.** Safari only
+delivers web push to installed apps. Add to Home Screen, open it from there,
+then turn notifications on.
+
 ## Text messages (Twilio)
 
 Optional and per person. In Settings you add your number, get a 6-digit code
@@ -93,8 +118,12 @@ lib/estimate.js  Optional Claude vision call.
 sql/001_init.sql The database: tables in schema `sip`, API functions in `public.sip_*`.
 sql/002_...sql   Streaks and Telegram linking.
 sql/003_sms.sql  Phone numbers, verification, who-got-passed lookup.
+sql/004_push.sql Push subscriptions per device.
 lib/telegram.js  Telegram bot messages and webhook helpers.
 lib/sms.js       Twilio client and the two text bodies.
+lib/push.js      Web push: aes128gcm payload encryption and VAPID signing.
+scripts/vapid.js Generates a VAPID key pair.
+test-push.js     Push crypto test: encrypt, decrypt, verify the signature.
 dev.js           Local dev server (npm run dev).
 test.js          End-to-end API test (npm test).
 ```
@@ -128,13 +157,15 @@ Environment variables (all optional):
 | `TELEGRAM_BOT_TOKEN` | Enables Telegram group notifications |
 | `TWILIO_ACCOUNT_SID` `TWILIO_AUTH_TOKEN` | Enable text messages |
 | `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID` | Which number the texts come from |
-| `APP_URL` | Link included in texts |
+| `APP_URL` | Link included in texts and notifications |
+| `VAPID_PUBLIC_KEY` `VAPID_PRIVATE_KEY` | Enable push notifications |
+| `VAPID_SUBJECT` | Contact address for push services, optional |
 | `SUPABASE_URL` | Override the Supabase project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | Override the publishable key |
 
 ## Database setup
 
-Run `sql/001_init.sql`, `sql/002_streaks_telegram.sql`, then `sql/003_sms.sql` against a Supabase project (SQL
+Run the files in `sql/` in order against a Supabase project (SQL
 editor or `supabase db push`) and point the app at that project. To remove it
 completely:
 
@@ -164,6 +195,10 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 | POST | `/api/phone/confirm` | `{code}` verifies the number |
 | POST | `/api/phone/toggle` | `{enabled}` turns texts on or off |
 | DELETE | `/api/phone` | Removes the number |
+| GET | `/api/push/key` | The public VAPID key for the browser |
+| POST | `/api/push/subscribe` | Registers this device |
+| POST | `/api/push/unsubscribe` | Removes this device |
+| POST | `/api/push/test` | Sends a test notification to your devices |
 
 Days are counted in each person's local time (the phone sends its local date),
 so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
@@ -183,6 +218,6 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
 | Channel | Cost | Setup | Notes |
 |---|---|---|---|
 | Telegram | free | ~5 min | Group chat feed, every cup plus call-outs. Built in. |
-| Web push | free | needs a small amount of code | Lands on the lock screen of the installed app. Not built yet. |
+| Web push | free | two keys in Vercel | Lands on the lock screen of the installed app. Recommended. |
 | SMS (Twilio) | number ~$1/mo plus ~$0.008 a text | account, a number, and A2P 10DLC registration | Built in, works on any phone with no app. |
 | WhatsApp | per message | Meta Business account, approved templates | Not built. |

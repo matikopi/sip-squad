@@ -3,6 +3,7 @@ import { rpc, HttpError } from '../lib/db.js';
 import { aiEnabled, estimateCupMl } from '../lib/estimate.js';
 import * as tg from '../lib/telegram.js';
 import * as sms from '../lib/sms.js';
+import * as push from '../lib/push.js';
 
 const COOKIE = 'sip';
 const COOKIE_MAX_AGE = 400 * 24 * 3600;     // browsers cap cookies at 400 days
@@ -43,7 +44,7 @@ async function body(req) {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const isoDay = (s) => (ISO_DAY.test(s || '') ? s : new Date().toISOString().slice(0, 10));
-const withAi = (user) => ({ ...user, ai: aiEnabled(), telegram: tg.telegramEnabled(), sms: sms.smsEnabled() });
+const withAi = (user) => ({ ...user, ai: aiEnabled(), telegram: tg.telegramEnabled(), sms: sms.smsEnabled(), push: push.pushEnabled() });
 
 function parsePhoto(dataUrl) {
   const m = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
@@ -90,6 +91,7 @@ route('POST', /^\/drinks$/, async (req) => {
   await Promise.all([
     tg.telegramEnabled() ? notifyCup(token, drink.id) : null,
     sms.smsEnabled() ? notifyPassed(token, drink.id) : null,
+    push.pushEnabled() ? notifyPushPassed(token, drink.id) : null,
   ]);
   return { drink };
 });
@@ -110,6 +112,58 @@ async function notifyPassed(token, drinkId) {
       sms.sendSms(p.phone, sms.passedText(p)).catch((e) => console.error('sms failed:', e.message))));
   } catch (e) { console.error('sms lookup failed:', e.message); }
 }
+
+// Push the friends this cup just overtook. Dead subscriptions are dropped.
+async function notifyPushPassed(token, drinkId) {
+  try {
+    const targets = await rpc('sip_push_passed', { p_token: token, p_drink_id: drinkId });
+    await Promise.all((targets || []).map(async (t) => {
+      try {
+        const outcome = await push.sendPush(t, push.passedPayload(t, push.APP_URL()));
+        if (outcome === 'gone') await rpc('sip_push_drop', { p_endpoint: t.endpoint });
+      } catch (e) { console.error('push failed:', e.message); }
+    }));
+  } catch (e) { console.error('push lookup failed:', e.message); }
+}
+
+// ---- web push --------------------------------------------------------------
+route('GET', /^\/push\/key$/, async () => {
+  if (!push.pushEnabled()) throw new HttpError(404, 'Push is not set up');
+  return { key: push.publicKey() };
+});
+
+route('POST', /^\/push\/subscribe$/, async (req) => {
+  if (!push.pushEnabled()) throw new HttpError(404, 'Push is not set up');
+  const b = await body(req);
+  const sub = b.subscription || {};
+  const user = await rpc('sip_push_subscribe', {
+    p_token: requireToken(req), p_endpoint: String(sub.endpoint || ''),
+    p_p256dh: String((sub.keys || {}).p256dh || ''), p_auth: String((sub.keys || {}).auth || ''),
+  });
+  return { user: withAi(user) };
+});
+
+route('POST', /^\/push\/unsubscribe$/, async (req) => {
+  const b = await body(req);
+  const user = await rpc('sip_push_unsubscribe', {
+    p_token: requireToken(req), p_endpoint: b.endpoint ? String(b.endpoint) : null });
+  return { user: withAi(user) };
+});
+
+// Sends a push to the caller's own devices so they can check it works.
+route('POST', /^\/push\/test$/, async (req) => {
+  if (!push.pushEnabled()) throw new HttpError(404, 'Push is not set up');
+  const targets = await rpc('sip_push_mine', { p_token: requireToken(req) });
+  let sent = 0;
+  await Promise.all((targets || []).map(async (t) => {
+    try {
+      const outcome = await push.sendPush(t, { title: 'Sip Squad 💧', body: 'Notifications are working.', url: push.APP_URL() });
+      if (outcome === 'gone') await rpc('sip_push_drop', { p_endpoint: t.endpoint });
+      else sent += 1;
+    } catch (e) { console.error('test push failed:', e.message); }
+  }));
+  return { sent };
+});
 
 // ---- phone number, verified by texting a code -------------------------------
 route('POST', /^\/phone$/, async (req) => {

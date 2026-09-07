@@ -1,12 +1,12 @@
 {
   "name": "sip-squad",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Snap your empty cup, track your water, compete with friends",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "node dev.js",
-    "test": "node test.js"
+    "test": "node test-push.js && node test.js"
   },
   "engines": { "node": "22.x" },
   "dependencies": {

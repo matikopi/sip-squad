@@ -193,9 +193,80 @@ $('settings-btn').addEventListener('click', () => {
     ? 'Linked. Every finished cup is posted to your Telegram group. Send /board there for the leaderboard.'
     : `Not linked. Add the Sip Squad bot to your Telegram group and send: /link ${me.group}`;
   renderSms();
+  renderPush();
   $('settings').hidden = false;
 });
 $('settings').addEventListener('click', (e) => { if (e.target === $('settings')) $('settings').hidden = true; });
+
+// ---- push notifications ----------------------------------------------------
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+async function currentSub() {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+
+async function renderPush() {
+  $('push').hidden = !me.push;
+  if (!me.push) return;
+  const err = $('push-error');
+  if (!pushSupported()) {
+    $('push-status').textContent = 'This browser cannot do notifications. On an iPhone, add the app to your home screen first, then open it from there.';
+    $('push-on').hidden = true; $('push-test').hidden = true;
+    return;
+  }
+  const sub = await currentSub();
+  const on = Boolean(sub) && Notification.permission === 'granted';
+  $('push-on').textContent = on ? 'Turn off' : 'Turn on';
+  $('push-on').hidden = false;
+  $('push-test').hidden = !on;
+  $('push-status').textContent = on
+    ? 'On for this device. You get a notification when a friend overtakes you.'
+    : Notification.permission === 'denied'
+      ? 'Notifications are blocked in your browser settings for this site. Allow them there, then come back.'
+      : 'Get a notification on this device when a friend overtakes you. Free, no texts.';
+  if (Notification.permission !== 'denied') err.textContent = '';
+}
+
+// The browser wants the VAPID key as bytes, not base64url text.
+const urlB64ToBytes = (s) => {
+  const pad = '='.repeat((4 - (s.length % 4)) % 4);
+  const raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (ch) => ch.charCodeAt(0));
+};
+
+$('push-on').addEventListener('click', async () => {
+  const btn = $('push-on'); btn.disabled = true; $('push-error').textContent = '';
+  try {
+    const existing = await currentSub();
+    if (existing && Notification.permission === 'granted') {
+      await api('POST', '/api/push/unsubscribe', { endpoint: existing.endpoint }).catch(() => {});
+      await existing.unsubscribe();
+      toast('Notifications off');
+    } else {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('You did not allow notifications');
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      const { key } = await api('GET', '/api/push/key');
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(key) });
+      const { user } = await api('POST', '/api/push/subscribe', { subscription: sub.toJSON() });
+      me = user;
+      toast('Notifications on 🔔');
+    }
+  } catch (err) { $('push-error').textContent = err.message; }
+  finally { btn.disabled = false; renderPush(); }
+});
+
+$('push-test').addEventListener('click', async () => {
+  const btn = $('push-test'); btn.disabled = true; $('push-error').textContent = '';
+  try {
+    const { sent } = await api('POST', '/api/push/test');
+    toast(sent ? 'Test sent' : 'No devices to send to');
+  } catch (err) { $('push-error').textContent = err.message; }
+  finally { btn.disabled = false; }
+});
 
 // ---- text messages ---------------------------------------------------------
 function renderSms() {

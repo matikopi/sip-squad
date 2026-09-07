@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 
 import http from 'node:http';
+import crypto from 'node:crypto';
+import https from 'node:https';
+import fs from 'node:fs';
 import { webhookSecret } from './lib/telegram.js';
 
 // Fake Telegram API that records what the app sends.
@@ -28,6 +31,42 @@ const fakeTwilio = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ sid: 'SM' + texts.length }));
 });
 await new Promise((r) => fakeTwilio.listen(3125, r));
+
+// Fake push service. Holds a browser-style subscription key pair and decrypts
+// each delivery, so the test proves a real device could read it.
+const pushes = [];
+const uaKeys = crypto.createECDH('prime256v1'); uaKeys.generateKeys();
+const uaAuth = crypto.randomBytes(16);
+const b64u = (b) => Buffer.from(b).toString('base64url');
+// The app only accepts https endpoints, as real push services are, so the
+// fake one gets a self-signed certificate and the app is told to trust it.
+const fakeSubscription = (path) => ({ endpoint: `https://localhost:3127${path}`,
+  keys: { p256dh: b64u(uaKeys.getPublicKey()), auth: b64u(uaAuth) } });
+let pushStatus = 201;
+const fakePush = https.createServer({
+  key: fs.readFileSync('./test-fixtures/localhost-key.pem'),
+  cert: fs.readFileSync('./test-fixtures/localhost-cert.pem'),
+}, async (req, res) => {
+  const chunks = []; for await (const c of req) chunks.push(c);
+  const body = Buffer.concat(chunks);
+  if (pushStatus >= 400) { res.statusCode = pushStatus; return res.end('gone'); }
+  const salt = body.subarray(0, 16), idlen = body[20];
+  const asPublic = body.subarray(21, 21 + idlen), ct = body.subarray(21 + idlen);
+  const ikm = crypto.hkdfSync('sha256', uaKeys.computeSecret(asPublic), uaAuth,
+    Buffer.concat([Buffer.from('WebPush: info\0'), uaKeys.getPublicKey(), asPublic]), 32);
+  const cek = crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12);
+  const dec = crypto.createDecipheriv('aes-128-gcm', Buffer.from(cek), Buffer.from(nonce));
+  dec.setAuthTag(ct.subarray(ct.length - 16));
+  const plain = Buffer.concat([dec.update(ct.subarray(0, ct.length - 16)), dec.final()]);
+  pushes.push({ path: req.url, auth: req.headers.authorization,
+                payload: JSON.parse(plain.subarray(0, plain.length - 1).toString('utf8')) });
+  res.statusCode = 201; res.end('');
+});
+await new Promise((r) => fakePush.listen(3127, r));
+process.env.VAPID_PUBLIC_KEY = 'BHgw_JqirB808txjRdewLXC3JIt6TfjAJA7gbNsoYSoeXALg24duLjXkSXjPVAIb7aim0u21dhygxXZzEtIhWDQ';
+process.env.VAPID_PRIVATE_KEY = 'A2rn2rXBZ_oItt02TyYlkkZfSeaPdcPnw1K-gar8A4w';
+process.env.NODE_EXTRA_CA_CERTS = './test-fixtures/localhost-cert.pem';
 process.env.TWILIO_ACCOUNT_SID = 'AC_test';
 process.env.TWILIO_AUTH_TOKEN = 'secret';
 process.env.TWILIO_FROM = '+15550000000';
@@ -160,8 +199,50 @@ try {
   }
   assert.equal((await call('DELETE', '/api/phone', null, b.data.token)).data.user.phone_last4, null);
 
+  // ---- web push: subscribe two devices, then get notified when overtaken
+  assert.equal((await call('GET', '/api/push/key')).data.key, process.env.VAPID_PUBLIC_KEY);
+  assert.equal((await call('POST', '/api/push/subscribe', { subscription: { endpoint: 'ftp://nope', keys: { p256dh: 'k', auth: 'a' } } }, b.data.token)).status, 400);
+  const phone1 = fakeSubscription('/ben-phone'), laptop = fakeSubscription('/ben-laptop');
+  assert.equal((await call('POST', '/api/push/subscribe', { subscription: phone1 }, b.data.token)).data.user.push_devices, 1);
+  assert.equal((await call('POST', '/api/push/subscribe', { subscription: laptop }, b.data.token)).data.user.push_devices, 2);
+  // re-subscribing the same endpoint does not duplicate it
+  assert.equal((await call('POST', '/api/push/subscribe', { subscription: phone1 }, b.data.token)).data.user.push_devices, 2);
+
+  // the test button reaches both devices
+  assert.equal((await call('POST', '/api/push/test', null, b.data.token)).data.sent, 2);
+  assert.equal(pushes.length, 2);
+  assert.match(pushes[0].payload.title, /Sip Squad/);
+  assert.match(pushes[0].auth, /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=/, 'signed with VAPID');
+  pushes.length = 0;
+
+  // Ben leads, Ana overtakes him: one push per device, decrypted successfully
+  const pBefore = await totals();
+  const pBoost = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: pBefore.Ana + 200 - pBefore.Ben }, b.data.token);
+  assert.equal(pushes.length, 0, 'taking the lead does not notify yourself');
+  const pPass = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: 400 }, a.data.token);
+  assert.equal(pushes.length, 2, 'both of Ben devices notified');
+  assert.deepEqual(new Set(pushes.map((x) => x.path)), new Set(['/ben-phone', '/ben-laptop']));
+  assert.equal(pushes[0].payload.title, 'Ana just passed you 💧');
+  assert.equal(pushes[0].payload.body, `${pBefore.Ana + 400} ml vs your ${pBefore.Ana + 200} ml today. Your move.`);
+  assert.equal(pushes[0].payload.url, 'https://sip-squad.example');
+  pushes.length = 0;
+
+  // a subscription the push service rejects is dropped automatically
+  pushStatus = 410;
+  assert.equal((await call('POST', '/api/push/test', null, b.data.token)).data.sent, 0);
+  assert.equal((await call('GET', '/api/me', null, b.data.token)).data.user.push_devices, 0, 'dead devices dropped');
+  pushStatus = 201;
+
+  // unsubscribing removes the device
+  await call('POST', '/api/push/subscribe', { subscription: phone1 }, b.data.token);
+  assert.equal((await call('POST', '/api/push/unsubscribe', { endpoint: phone1.endpoint }, b.data.token)).data.user.push_devices, 0);
+
+  for (const [id, tok] of [[pBoost.data.drink.id, b.data.token], [pPass.data.drink.id, a.data.token]]) {
+    assert.equal((await call('DELETE', `/api/drinks/${id}`, null, tok)).status, 200);
+  }
+
   for (const d of [d1, d2, d3]) assert.equal((await call('DELETE', `/api/drinks/${d.data.drink.id}`, null, d === d2 ? b.data.token : a.data.token)).status, 200);
   const out = await call('POST', '/api/logout', null, a.data.token);
   assert.match(out.setCookie, /Max-Age=0/);
   console.log('all good (group', group + ')');
-} finally { server.kill(); fakeTg.close(); fakeTwilio.close(); }
+} finally { server.kill(); fakeTg.close(); fakeTwilio.close(); fakePush.close(); }
