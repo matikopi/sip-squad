@@ -106,6 +106,27 @@
       <div class="tg-head">Telegram group notifications</div>
       <p class="tiny muted" id="tg-status"></p>
     </div>
+
+    <div id="sms" hidden>
+      <div class="tg-head">Text me when a friend passes me</div>
+      <p class="tiny muted" id="sms-status"></p>
+      <div id="sms-add">
+        <input id="sms-phone" type="tel" autocomplete="tel" placeholder="+1 415 555 1234">
+        <button class="btn small" id="sms-send">Text me a code</button>
+      </div>
+      <div id="sms-confirm" hidden>
+        <input id="sms-code" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code">
+        <div class="row">
+          <button class="btn ghost small" id="sms-cancel">Cancel</button>
+          <button class="btn small" id="sms-ok">Confirm</button>
+        </div>
+      </div>
+      <div id="sms-on" hidden>
+        <label class="switch"><input id="sms-toggle" type="checkbox"> Texts on</label>
+        <button class="btn ghost small" id="sms-remove">Remove number</button>
+      </div>
+      <p class="error" id="sms-error"></p>
+    </div>
     <div class="row">
       <button class="btn ghost small" id="logout">Leave group</button>
       <button class="btn small" id="set-save">Save</button>

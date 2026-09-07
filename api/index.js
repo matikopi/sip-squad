@@ -2,6 +2,7 @@
 import { rpc, HttpError } from '../lib/db.js';
 import { aiEnabled, estimateCupMl } from '../lib/estimate.js';
 import * as tg from '../lib/telegram.js';
+import * as sms from '../lib/sms.js';
 
 const COOKIE = 'sip';
 const COOKIE_MAX_AGE = 400 * 24 * 3600;     // browsers cap cookies at 400 days
@@ -42,7 +43,7 @@ async function body(req) {
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const isoDay = (s) => (ISO_DAY.test(s || '') ? s : new Date().toISOString().slice(0, 10));
-const withAi = (user) => ({ ...user, ai: aiEnabled(), telegram: tg.telegramEnabled() });
+const withAi = (user) => ({ ...user, ai: aiEnabled(), telegram: tg.telegramEnabled(), sms: sms.smsEnabled() });
 
 function parsePhoto(dataUrl) {
   const m = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
@@ -86,7 +87,10 @@ route('POST', /^\/drinks$/, async (req) => {
     p_token: token, p_day: isoDay(b.day), p_ml: ml, p_source: source, p_label: label,
     p_media_type: photo.mediaType, p_photo_b64: photo.b64,
   });
-  if (tg.telegramEnabled()) await notifyCup(token, drink.id);
+  await Promise.all([
+    tg.telegramEnabled() ? notifyCup(token, drink.id) : null,
+    sms.smsEnabled() ? notifyPassed(token, drink.id) : null,
+  ]);
   return { drink };
 });
 
@@ -97,6 +101,42 @@ async function notifyCup(token, drinkId) {
     if (ctx && ctx.chat_id) await tg.send(ctx.chat_id, tg.cupMessage(ctx));
   } catch (e) { console.error('telegram notify failed:', e.message); }
 }
+
+// Text the friends this cup just overtook. Best effort, never fails the log.
+async function notifyPassed(token, drinkId) {
+  try {
+    const passed = await rpc('sip_sms_passed', { p_token: token, p_drink_id: drinkId });
+    await Promise.all((passed || []).map((p) =>
+      sms.sendSms(p.phone, sms.passedText(p)).catch((e) => console.error('sms failed:', e.message))));
+  } catch (e) { console.error('sms lookup failed:', e.message); }
+}
+
+// ---- phone number, verified by texting a code -------------------------------
+route('POST', /^\/phone$/, async (req) => {
+  if (!sms.smsEnabled()) throw new HttpError(404, 'Texts are not set up');
+  const b = await body(req);
+  const started = await rpc('sip_start_phone_verify', { p_token: requireToken(req), p_phone: String(b.phone || '') });
+  try {
+    await sms.sendSms(started.phone, sms.verifyText(started.code));
+  } catch (e) {
+    console.error('verify sms failed:', e.message);
+    throw new HttpError(502, 'Could not text that number. Check it and try again.');
+  }
+  return { sent: true };
+});
+
+route('POST', /^\/phone\/confirm$/, async (req) => {
+  const b = await body(req);
+  return { user: withAi(await rpc('sip_confirm_phone', { p_token: requireToken(req), p_code: String(b.code || '') })) };
+});
+
+route('DELETE', /^\/phone$/, async (req) =>
+  ({ user: withAi(await rpc('sip_remove_phone', { p_token: requireToken(req) })) }));
+
+route('POST', /^\/phone\/toggle$/, async (req) => {
+  const b = await body(req);
+  return { user: withAi(await rpc('sip_set_sms', { p_token: requireToken(req), p_enabled: Boolean(b.enabled) })) };
+});
 
 // Telegram webhook: "/link <code>", "/unlink", "/board" sent in a group chat.
 route('POST', /^\/telegram$/, async (req) => {

@@ -192,9 +192,57 @@ $('settings-btn').addEventListener('click', () => {
   $('tg-status').textContent = me.telegram_linked
     ? 'Linked. Every finished cup is posted to your Telegram group. Send /board there for the leaderboard.'
     : `Not linked. Add the Sip Squad bot to your Telegram group and send: /link ${me.group}`;
+  renderSms();
   $('settings').hidden = false;
 });
 $('settings').addEventListener('click', (e) => { if (e.target === $('settings')) $('settings').hidden = true; });
+
+// ---- text messages ---------------------------------------------------------
+function renderSms() {
+  $('sms').hidden = !me.sms;
+  if (!me.sms) return;
+  const verified = Boolean(me.phone_last4);
+  $('sms-add').hidden = verified || me.phone_pending;
+  $('sms-confirm').hidden = !me.phone_pending;
+  $('sms-on').hidden = !verified;
+  $('sms-toggle').checked = me.sms_enabled;
+  $('sms-status').textContent = verified
+    ? `Texting ••• ${me.phone_last4}. You get a text when a friend overtakes you, with a link to log a cup.`
+    : me.phone_pending ? 'Enter the code we just texted you.'
+    : 'Add your number and we will text you when a friend overtakes you. Standard rates apply.';
+  $('sms-error').textContent = '';
+}
+
+async function smsCall(method, path, payload, btn) {
+  $('sms-error').textContent = '';
+  if (btn) btn.disabled = true;
+  try {
+    const out = await api(method, path, payload);
+    if (out.user) me = out.user;
+    return out;
+  } catch (err) { $('sms-error').textContent = err.message; throw err; }
+  finally { if (btn) btn.disabled = false; renderSms(); }
+}
+
+$('sms-send').addEventListener('click', async () => {
+  const phone = $('sms-phone').value.trim();
+  if (!phone) { $('sms-error').textContent = 'Enter your number'; return; }
+  try { await smsCall('POST', '/api/phone', { phone }, $('sms-send')); me.phone_pending = true; renderSms(); toast('Code sent'); }
+  catch {}
+});
+$('sms-ok').addEventListener('click', async () => {
+  try { await smsCall('POST', '/api/phone/confirm', { code: $('sms-code').value }, $('sms-ok')); toast('Texts on 📲'); }
+  catch {}
+});
+$('sms-cancel').addEventListener('click', async () => {
+  try { await smsCall('DELETE', '/api/phone', null, $('sms-cancel')); } catch {}
+});
+$('sms-remove').addEventListener('click', async () => {
+  try { await smsCall('DELETE', '/api/phone', null, $('sms-remove')); toast('Number removed'); } catch {}
+});
+$('sms-toggle').addEventListener('change', async () => {
+  try { await smsCall('POST', '/api/phone/toggle', { enabled: $('sms-toggle').checked }, null); } catch {}
+});
 $('set-save').addEventListener('click', async () => {
   try {
     const { user } = await api('PATCH', '/api/me', { cup_ml: $('set-cup').value, goal_ml: $('set-goal').value });
