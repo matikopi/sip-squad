@@ -58,7 +58,7 @@ const route = (method, pattern, handler) => routes.push({ method, pattern, handl
 
 route('POST', /^\/join$/, async (req, res) => {
   const b = await body(req);
-  const out = await rpc('sip_join', { p_name: String(b.name || ''), p_group: String(b.group || '') });
+  const out = await rpc('sip_join', { p_name: String(b.name || ''), p_group: b.group ? String(b.group) : null });
   setCookie(res, out.token);
   return { token: out.token, user: withAi(out.user) };
 });
@@ -257,6 +257,10 @@ export default async function handler(req, res) {
       const m = r.method === req.method && r.pattern.exec(path);
       if (!m) continue;
       const out = await r.handler(req, res, m, url);
+      // Slide the cookie forward on every authenticated call, so an app that
+      // gets used never expires, and a header-only session gains a cookie.
+      const token = tokenOf(req);
+      if (token && !res.getHeader('set-cookie')) setCookie(res, token);
       if (out && out.raw) { res.setHeader('content-type', out.type); return res.status(200).end(out.raw); }
       res.setHeader('content-type', 'application/json');
       return res.status(200).end(JSON.stringify(out));

@@ -9,12 +9,24 @@ Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 ## Use it
 
 1. Open the app URL on your phone.
-2. Enter a name and a group code. Share the code with friends.
+2. Type your name. That is the whole sign-in.
 3. Tap **I finished a cup**, take a photo of the empty cup. Done.
 
-You stay signed in: the session is a long-lived cookie (400 days, the browser
-maximum) plus a copy in local storage. Same name + same group code signs you
-back in from any device. There are no passwords. This is a toy for friends.
+Everyone shares one board, so there is no group code. Typing the same name
+again gets you the same account, from any device.
+
+**Staying signed in.** The session is an HttpOnly cookie that lasts 400 days,
+the browser maximum, and every request slides it forward, so an app in regular
+use never expires. A copy of the token also sits in local storage as a
+fallback. The cookie is what does the work: Safari deletes script-written
+storage after seven days of not using a site, but a server-set HttpOnly cookie
+survives that, and the app asks the server who you are on every start rather
+than trusting local storage. Signing out takes clearing cookies, or tapping
+Leave group.
+
+One consequence of name-only sign-in: two people who pick the same name share
+an account. Fine for a group of friends with distinct names, and the reason
+there is nothing sensitive in here.
 
 **Add to home screen:** iPhone: Safari share button > *Add to Home Screen*.
 Android: Chrome menu > *Install app* (or *Add to Home screen*). It opens
@@ -119,6 +131,7 @@ sql/001_init.sql The database: tables in schema `sip`, API functions in `public.
 sql/002_...sql   Streaks and Telegram linking.
 sql/003_sms.sql  Phone numbers, verification, who-got-passed lookup.
 sql/004_push.sql Push subscriptions per device.
+sql/005_...sql   One shared board and name-only sign-in.
 lib/telegram.js  Telegram bot messages and webhook helpers.
 lib/sms.js       Twilio client and the two text bodies.
 lib/push.js      Web push: aes128gcm payload encryption and VAPID signing.
@@ -146,7 +159,13 @@ If the group gets serious, move photos to Supabase Storage or Vercel Blob.
 ```bash
 npm install
 npm run dev        # http://localhost:3000, talks to the real Supabase project
-npm test           # end-to-end API test using a throwaway group
+```
+
+Tests need a scratch database, because everyone now shares one board and a run
+against the real project would put test names on it:
+
+```bash
+SUPABASE_URL=<scratch project> npm test
 ```
 
 Environment variables (all optional):
@@ -182,7 +201,7 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 
 | Method | Path | What |
 |---|---|---|
-| POST | `/api/join` | `{name, group}` -> `{token, user}` and sets the cookie |
+| POST | `/api/join` | `{name}` -> `{token, user}` and sets the session cookie |
 | POST | `/api/logout` | Clears the cookie |
 | GET / PATCH | `/api/me` | Read or change `cup_ml`, `goal_ml` |
 | POST | `/api/drinks` | `{photo: dataURL, day: YYYY-MM-DD, ml?}` -> `{drink}` |
@@ -207,7 +226,7 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
 
 - One photo = one full cup. Drank half? Adjust the ml.
 - A photo is required. That is the whole game.
-- Groups are open: anyone with the code can join.
+- One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.
 - Daily goal defaults to 2000 ml, per person. The ring turns green when hit.
 - Photos are kept forever and visible to everyone in the group.

@@ -22,12 +22,11 @@
     <h1>Sip Squad</h1>
     <p class="muted">Finish a cup, snap the empty cup, climb the board.</p>
     <form id="join-form">
-      <label>Your name<input name="name" maxlength="24" autocomplete="nickname" required placeholder="e.g. Mati"></label>
-      <label>Group code<input name="group" maxlength="32" autocomplete="off" required placeholder="share this with friends"></label>
+      <label>Your name<input name="name" maxlength="24" autocomplete="nickname" required placeholder="e.g. Mati" autocapitalize="words"></label>
       <button class="btn primary" type="submit">Let's drink</button>
       <p class="error" id="join-error"></p>
     </form>
-    <p class="tiny muted">Same name + same code = same account. No passwords, friends only.</p>
+    <p class="tiny muted">Just your name. No password, and you stay signed in.</p>
   </div>
 </section>
 
@@ -35,8 +34,8 @@
 <section id="home" class="screen" hidden>
   <header>
     <div>
-      <div class="tiny muted">group</div>
-      <div class="group-code" id="group-code"></div>
+      <div class="tiny muted">Sip Squad</div>
+      <div class="group-code" id="who"></div>
     </div>
     <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙️</button>
   </header>

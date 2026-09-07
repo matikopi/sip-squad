@@ -76,11 +76,20 @@ await new Promise((r) => fakeTg.listen(3124, r));
 process.env.TELEGRAM_BOT_TOKEN = 'test-token';
 process.env.TELEGRAM_API_BASE = 'http://127.0.0.1:3124';
 
+// Everyone now shares one board, so a test run against the real project would
+// put fake names on it. Point SUPABASE_URL at a scratch database instead.
+if (!process.env.SUPABASE_URL && !process.env.SIP_TEST_ALLOW_PROD) {
+  console.error('Refusing to run: this would add test accounts to the live board.\n' +
+    'Set SUPABASE_URL to a scratch project, or SIP_TEST_ALLOW_PROD=1 to override.');
+  process.exit(1);
+}
+
 const PORT = 3123;
 const server = spawn(process.execPath, ['dev.js'], { env: { ...process.env, PORT, ANTHROPIC_API_KEY: '' }, stdio: 'inherit' });
 await new Promise((r) => setTimeout(r, 800));
 const base = `http://127.0.0.1:${PORT}`;
-const group = `test-${Date.now()}`;
+const stamp = Date.now();
+const group = `test-${stamp}`;
 // Dates are relative so the suite does not break when the clock rolls over.
 const noon = new Date(); noon.setUTCHours(12, 0, 0, 0);
 const iso = (offsetDays) => new Date(noon.getTime() + offsetDays * 86400000).toISOString().slice(0, 10);
@@ -96,11 +105,25 @@ const call = async (method, p, body, token) => {
 const jpeg = 'data:image/jpeg;base64,' + Buffer.alloc(700, 1).toString('base64');
 
 try {
-  const a = await call('POST', '/api/join', { name: 'Ana', group });
+  // Signing in takes a name and nothing else.
+  const a = await call('POST', '/api/join', { name: `Ana ${stamp}` });
   assert.equal(a.status, 200, JSON.stringify(a.data));
   assert.match(a.setCookie, /^sip=.*HttpOnly/, 'session cookie set');
-  const b = await call('POST', '/api/join', { name: 'Ben', group });
-  assert.equal((await call('POST', '/api/join', { name: 'ana', group })).data.token, a.data.token, 'same account');
+  assert.match(a.setCookie, /Max-Age=345[0-9]{5}/, 'cookie lasts about 400 days');
+  assert.equal(a.data.user.group, 'everyone', 'one shared board');
+  const b = await call('POST', '/api/join', { name: `Ben ${stamp}` });
+  assert.equal((await call('POST', '/api/join', { name: `ana ${stamp}` })).data.token, a.data.token, 'same name, same account');
+  assert.equal((await call('POST', '/api/join', { name: '' })).status, 400, 'a name is required');
+
+  // Staying signed in: the cookie alone works, and every call slides it forward.
+  const cookie = a.setCookie.split(';')[0];
+  const viaCookieOnly = await fetch(`${base}/api/me`, { headers: { cookie } });
+  assert.equal(viaCookieOnly.status, 200, 'cookie alone identifies you');
+  assert.equal((await viaCookieOnly.json()).user.name, `Ana ${stamp}`);
+  assert.match(viaCookieOnly.headers.get('set-cookie') || '', /^sip=.*Max-Age=345/, 'cookie renewed on use');
+  // A client with only the header token gets a cookie back, so it survives losing storage.
+  const viaHeaderOnly = await fetch(`${base}/api/me`, { headers: { 'x-token': a.data.token } });
+  assert.match(viaHeaderOnly.headers.get('set-cookie') || '', /^sip=/, 'header-only session gains a cookie');
 
   assert.equal((await call('GET', '/api/me')).status, 401);
   // cookie alone is enough to stay signed in
@@ -119,11 +142,11 @@ try {
   assert.equal((await call('PATCH', `/api/drinks/${d1.data.drink.id}`, { ml: 1 }, b.data.token)).status, 404);
 
   const today = await call('GET', `/api/board?range=today&day=${TODAY}`, null, a.data.token);
-  assert.deepEqual(today.data.board.map((r) => [r.name, r.ml, r.cups, r.streak]), [['Ana', 750, 1, 0], ['Ben', 500, 1, 0]]);
+  assert.deepEqual(today.data.board.map((r) => [r.name, r.ml, r.cups, r.streak]), [[`Ana ${stamp}`, 750, 1, 0], [`Ben ${stamp}`, 500, 1, 0]]);
   const all = await call('GET', `/api/board?range=all&day=${TODAY}`, null, a.data.token);
-  assert.deepEqual(all.data.board.map((r) => [r.name, r.ml]), [['Ben', 850], ['Ana', 750]]);
+  assert.deepEqual(all.data.board.map((r) => [r.name, r.ml]), [[`Ben ${stamp}`, 850], [`Ana ${stamp}`, 750]]);
   const week = await call('GET', `/api/board?range=week&day=${TODAY}`, null, a.data.token);
-  assert.equal(week.data.board.find((r) => r.name === 'Ben').ml, 500);
+  assert.equal(week.data.board.find((r) => r.name === `Ben ${stamp}`).ml, 500);
 
   assert.equal((await call('PATCH', '/api/me', { cup_ml: 250, goal_ml: 3000 }, a.data.token)).data.user.cup_ml, 250);
   const d3 = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY }, a.data.token);
@@ -137,20 +160,20 @@ try {
   // streak: goal is 3000 by now; 3000 ml yesterday -> streak 1 shows on today's board
   const big = await call('POST', '/api/drinks', { photo: jpeg, day: YESTERDAY, ml: 3000 }, a.data.token);
   const withStreak = await call('GET', `/api/board?range=today&day=${TODAY}`, null, a.data.token);
-  assert.equal(withStreak.data.board.find((r) => r.name === 'Ana').streak, 1, 'streak');
+  assert.equal(withStreak.data.board.find((r) => r.name === `Ana ${stamp}`).streak, 1, 'streak');
   await call('DELETE', `/api/drinks/${big.data.drink.id}`, null, a.data.token);
 
   // telegram: webhook rejects a bad secret, links a chat, posts a message when a cup is logged
   assert.equal((await fetch(`${base}/api/telegram`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'nope' }, body: '{}' })).status, 403);
   const hook = (text) => fetch(`${base}/api/telegram`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-telegram-bot-api-secret-token': webhookSecret() }, body: JSON.stringify({ message: { chat: { id: -100777 }, text } }) });
-  assert.equal((await hook(`/link ${group}`)).status, 200);
-  assert.match(sent.pop().text, /Linked to <b>test-/);
+  assert.equal((await hook('/link everyone')).status, 200);
+  assert.match(sent.pop().text, /Linked to <b>everyone<\/b>/);
   assert.equal((await call('GET', '/api/me', null, a.data.token)).data.user.telegram_linked, true);
   const d4 = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: 300 }, a.data.token);
   const cupMsg = sent.pop();
-  assert.equal(cupMsg.chat_id, -100777); assert.match(cupMsg.text, /Ana.*finished cup #3 \(300 ml\)/);
+  assert.equal(cupMsg.chat_id, -100777); assert.match(cupMsg.text, new RegExp(`Ana ${stamp}.*finished cup #3 \\(300 ml\\)`));
   await hook('/board');
-  assert.match(sent.pop().text, /🏆 Ana/);
+  assert.match(sent.pop().text, new RegExp(`🏆 Ana ${stamp}`));
   await hook('/unlink'); assert.match(sent.pop().text, /Unlinked/);
   await call('DELETE', `/api/drinks/${d4.data.drink.id}`, null, a.data.token);
 
@@ -175,16 +198,17 @@ try {
   const totals = async () => Object.fromEntries((await call('GET', `/api/board?range=today&day=${TODAY}`, null, a.data.token))
     .data.board.map((r) => [r.name, r.ml]));
   const before = await totals();
-  const boost = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: before.Ana + 300 - before.Ben }, b.data.token);
+  const ANA = `Ana ${stamp}`, BEN = `Ben ${stamp}`;
+  const boost = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: before[ANA] + 300 - before[BEN] }, b.data.token);
   assert.equal(texts.length, 0, 'Ben taking the lead does not text Ben');
-  const benMl = before.Ana + 300;
+  const benMl = before[ANA] + 300;
   const pass = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: 500 }, a.data.token);
   const passText = texts.pop();
   assert.ok(passText, 'overtaking a friend sends one text');
   assert.equal(passText.to, PHONE);
   assert.equal(passText.from, '+15550000000');
   assert.equal(passText.body,
-    `Ana just passed you on Sip Squad: ${before.Ana + 500} ml vs your ${benMl} ml today. Your move: https://sip-squad.example`);
+    `${ANA} just passed you on Sip Squad: ${before[ANA] + 500} ml vs your ${benMl} ml today. Your move: https://sip-squad.example`);
   assert.ok(passText.body.length <= 160, `one segment, got ${passText.body.length}`);
 
   // opting out stops the texts
@@ -217,13 +241,13 @@ try {
 
   // Ben leads, Ana overtakes him: one push per device, decrypted successfully
   const pBefore = await totals();
-  const pBoost = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: pBefore.Ana + 200 - pBefore.Ben }, b.data.token);
+  const pBoost = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: pBefore[ANA] + 200 - pBefore[BEN] }, b.data.token);
   assert.equal(pushes.length, 0, 'taking the lead does not notify yourself');
   const pPass = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: 400 }, a.data.token);
   assert.equal(pushes.length, 2, 'both of Ben devices notified');
   assert.deepEqual(new Set(pushes.map((x) => x.path)), new Set(['/ben-phone', '/ben-laptop']));
-  assert.equal(pushes[0].payload.title, 'Ana just passed you 💧');
-  assert.equal(pushes[0].payload.body, `${pBefore.Ana + 400} ml vs your ${pBefore.Ana + 200} ml today. Your move.`);
+  assert.equal(pushes[0].payload.title, `${ANA} just passed you 💧`);
+  assert.equal(pushes[0].payload.body, `${pBefore[ANA] + 400} ml vs your ${pBefore[ANA] + 200} ml today. Your move.`);
   assert.equal(pushes[0].payload.url, 'https://sip-squad.example');
   pushes.length = 0;
 
@@ -244,5 +268,5 @@ try {
   for (const d of [d1, d2, d3]) assert.equal((await call('DELETE', `/api/drinks/${d.data.drink.id}`, null, d === d2 ? b.data.token : a.data.token)).status, 200);
   const out = await call('POST', '/api/logout', null, a.data.token);
   assert.match(out.setCookie, /Max-Age=0/);
-  console.log('all good (group', group + ')');
+  console.log('all good (names', `Ana ${stamp} / Ben ${stamp})`);
 } finally { server.kill(); fakeTg.close(); fakeTwilio.close(); fakePush.close(); }

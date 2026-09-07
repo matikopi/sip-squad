@@ -19,6 +19,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 async function api(method, path, body) {
   const res = await fetch(path, {
     method,
+    credentials: 'same-origin',
     headers: { 'content-type': 'application/json', ...(store.token ? { 'x-token': store.token } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -43,7 +44,7 @@ $('join-form').addEventListener('submit', async (e) => {
   const f = new FormData(e.target);
   $('join-error').textContent = '';
   try {
-    const { token, user } = await api('POST', '/api/join', { name: f.get('name'), group: f.get('group') });
+    const { token, user } = await api('POST', '/api/join', { name: f.get('name') });
     store.token = token; me = user;
     enterHome();
   } catch (err) { $('join-error').textContent = err.message; }
@@ -51,7 +52,7 @@ $('join-form').addEventListener('submit', async (e) => {
 
 function enterHome() {
   show('home');
-  $('group-code').textContent = me.group;
+  $('who').textContent = me.name;
   $('goal-ml').textContent = me.goal_ml;
   $('snap-hint').textContent = me.ai
     ? 'Snap the empty cup. The app guesses the size, you can adjust.'
@@ -330,7 +331,18 @@ $('logout').addEventListener('click', async () => {
 // ------------------------------------------------------------- boot
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 (async () => {
-  if (!store.token) return show('join');
-  try { me = (await api('GET', '/api/me')).user; enterHome(); }
-  catch { store.token = null; show('join'); }
+  // Ask the server who we are even with no token in local storage: the session
+  // cookie survives storage being cleared, so this is what keeps people signed
+  // in. Only a real 401 sends anyone back to the name screen.
+  try {
+    me = (await api('GET', '/api/me')).user;
+    enterHome();
+  } catch (err) {
+    if (!/sign in/i.test(err.message)) {
+      // Offline or the server is unhappy: do not throw people out over it.
+      $('status').textContent = err.message;
+    }
+    store.token = null;
+    show('join');
+  }
 })();
