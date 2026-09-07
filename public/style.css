@@ -95,3 +95,7 @@ input { display: block; width: 100%; margin-top: 4px; padding: 12px; font-size: 
 #sms-send { margin-top: 8px; }
 #push { border-top: 1px solid var(--line); margin: 14px 0; padding-top: 12px; }
 #push .row { margin-top: 10px; }
+.link { display: inline-block; margin: 10px 0 0; font-size: 13px; color: var(--accent);
+  text-decoration: underline; cursor: pointer; }
+.feed .cup.nophoto { display: grid; place-items: center; background: linear-gradient(160deg, #e0f2fe, #7dd3fc); }
+.feed .cup.nophoto .drop { font-size: 30px; }

@@ -35,12 +35,13 @@ await new Promise((r) => fakeTwilio.listen(3125, r));
 // Fake push service. Holds a browser-style subscription key pair and decrypts
 // each delivery, so the test proves a real device could read it.
 const pushes = [];
+const undecryptable = [];
 const uaKeys = crypto.createECDH('prime256v1'); uaKeys.generateKeys();
 const uaAuth = crypto.randomBytes(16);
 const b64u = (b) => Buffer.from(b).toString('base64url');
 // The app only accepts https endpoints, as real push services are, so the
 // fake one gets a self-signed certificate and the app is told to trust it.
-const fakeSubscription = (path) => ({ endpoint: `https://localhost:3127${path}`,
+const fakeSubscription = (path) => ({ endpoint: `https://localhost:3127/${stamp}${path}`,
   keys: { p256dh: b64u(uaKeys.getPublicKey()), auth: b64u(uaAuth) } });
 let pushStatus = 201;
 const fakePush = https.createServer({
@@ -50,17 +51,24 @@ const fakePush = https.createServer({
   const chunks = []; for await (const c of req) chunks.push(c);
   const body = Buffer.concat(chunks);
   if (pushStatus >= 400) { res.statusCode = pushStatus; return res.end('gone'); }
-  const salt = body.subarray(0, 16), idlen = body[20];
-  const asPublic = body.subarray(21, 21 + idlen), ct = body.subarray(21 + idlen);
-  const ikm = crypto.hkdfSync('sha256', uaKeys.computeSecret(asPublic), uaAuth,
-    Buffer.concat([Buffer.from('WebPush: info\0'), uaKeys.getPublicKey(), asPublic]), 32);
-  const cek = crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16);
-  const nonce = crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12);
-  const dec = crypto.createDecipheriv('aes-128-gcm', Buffer.from(cek), Buffer.from(nonce));
-  dec.setAuthTag(ct.subarray(ct.length - 16));
-  const plain = Buffer.concat([dec.update(ct.subarray(0, ct.length - 16)), dec.final()]);
-  pushes.push({ path: req.url, auth: req.headers.authorization,
-                payload: JSON.parse(plain.subarray(0, plain.length - 1).toString('utf8')) });
+  // A real push service would just forward the bytes; decrypting here is how
+  // the test proves a device could read them. Never throw: an undecryptable
+  // delivery is a finding to assert on, not a crash.
+  try {
+    const salt = body.subarray(0, 16), idlen = body[20];
+    const asPublic = body.subarray(21, 21 + idlen), ct = body.subarray(21 + idlen);
+    const ikm = crypto.hkdfSync('sha256', uaKeys.computeSecret(asPublic), uaAuth,
+      Buffer.concat([Buffer.from('WebPush: info\0'), uaKeys.getPublicKey(), asPublic]), 32);
+    const cek = crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: aes128gcm\0'), 16);
+    const nonce = crypto.hkdfSync('sha256', ikm, salt, Buffer.from('Content-Encoding: nonce\0'), 12);
+    const dec = crypto.createDecipheriv('aes-128-gcm', Buffer.from(cek), Buffer.from(nonce));
+    dec.setAuthTag(ct.subarray(ct.length - 16));
+    const plain = Buffer.concat([dec.update(ct.subarray(0, ct.length - 16)), dec.final()]);
+    pushes.push({ path: req.url, auth: req.headers.authorization,
+                  payload: JSON.parse(plain.subarray(0, plain.length - 1).toString('utf8')) });
+  } catch (e) {
+    undecryptable.push({ path: req.url, error: e.message });
+  }
   res.statusCode = 201; res.end('');
 });
 await new Promise((r) => fakePush.listen(3127, r));
@@ -129,6 +137,15 @@ try {
   // cookie alone is enough to stay signed in
   const viaCookie = await fetch(`${base}/api/me`, { headers: { cookie: a.setCookie.split(';')[0] } });
   assert.equal(viaCookie.status, 200);
+  // One tap, no photo: that is the normal way to log a cup now.
+  const tap = await call('POST', '/api/drinks', { photo: null, day: TODAY }, a.data.token);
+  assert.equal(tap.status, 200, JSON.stringify(tap.data));
+  assert.equal(tap.data.drink.ml, 350, 'counts as the default cup');
+  assert.equal(tap.data.drink.source, 'default');
+  assert.equal(tap.data.drink.photo_id, null, 'nothing stored');
+  assert.equal((await call('DELETE', `/api/drinks/${tap.data.drink.id}`, null, a.data.token)).status, 200,
+    'a photo-less cup can be removed');
+  // a malformed photo is still refused
   assert.equal((await call('POST', '/api/drinks', { photo: 'nope' }, a.data.token)).status, 400);
 
   const d1 = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY }, a.data.token);
@@ -229,9 +246,13 @@ try {
   assert.equal((await call('DELETE', '/api/phone', null, b.data.token)).data.user.phone_last4, null);
 
   // ---- web push: subscribe two devices, then get notified when overtaken
-  assert.equal((await call('GET', '/api/push/key')).data.key, process.env.VAPID_PUBLIC_KEY);
+  // The public key is derived from the private one, so a mistyped VAPID_PUBLIC_KEY cannot break it.
+  const served = (await call('GET', '/api/push/key')).data.key;
+  assert.equal(served.length, 87, 'a full 65-byte key');
+  assert.equal(served, process.env.VAPID_PUBLIC_KEY, 'matches the pair in use');
   assert.equal((await call('POST', '/api/push/subscribe', { subscription: { endpoint: 'ftp://nope', keys: { p256dh: 'k', auth: 'a' } } }, b.data.token)).status, 400);
   const phone1 = fakeSubscription('/ben-phone'), laptop = fakeSubscription('/ben-laptop');
+  const paths = (list) => new Set(list.map((x) => x.path.replace(`/${stamp}`, '')));
   assert.equal((await call('POST', '/api/push/subscribe', { subscription: phone1 }, b.data.token)).data.user.push_devices, 1);
   assert.equal((await call('POST', '/api/push/subscribe', { subscription: laptop }, b.data.token)).data.user.push_devices, 2);
   // re-subscribing the same endpoint does not duplicate it
@@ -244,15 +265,15 @@ try {
   assert.match(pushes[0].auth, /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=/, 'signed with VAPID');
   pushes.length = 0;
 
-  // Ben leads, Ana overtakes him: one push per device, decrypted successfully
+  // Every cup notifies everyone else in the group, on each of their devices.
   const pBefore = await totals();
-  const pBoost = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: pBefore[ANA] + 200 - pBefore[BEN] }, b.data.token);
-  assert.equal(pushes.length, 0, 'taking the lead does not notify yourself');
-  const pPass = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: 400 }, a.data.token);
+  const benCup = await call('POST', '/api/drinks', { photo: null, day: TODAY, ml: 250 }, b.data.token);
+  assert.equal(pushes.length, 0, 'Ben has the only devices, so his own cup notifies nobody');
+  const anaCup = await call('POST', '/api/drinks', { photo: null, day: TODAY, ml: 400 }, a.data.token);
   assert.equal(pushes.length, 2, 'both of Ben devices notified');
-  assert.deepEqual(new Set(pushes.map((x) => x.path)), new Set(['/ben-phone', '/ben-laptop']));
-  assert.equal(pushes[0].payload.title, `${ANA} just passed you 💧`);
-  assert.equal(pushes[0].payload.body, `${pBefore[ANA] + 400} ml vs your ${pBefore[ANA] + 200} ml today. Your move.`);
+  assert.deepEqual(paths(pushes), new Set(['/ben-phone', '/ben-laptop']));
+  assert.equal(pushes[0].payload.title, `${ANA} drank 400 ml 💧`);
+  assert.match(pushes[0].payload.body, new RegExp(`^${pBefore[ANA] + 400} of \\d+ ml today`), pushes[0].payload.body);
   assert.equal(pushes[0].payload.url, 'https://sip-squad.example');
   pushes.length = 0;
 
@@ -265,8 +286,11 @@ try {
   // unsubscribing removes the device
   await call('POST', '/api/push/subscribe', { subscription: phone1 }, b.data.token);
   assert.equal((await call('POST', '/api/push/unsubscribe', { endpoint: phone1.endpoint }, b.data.token)).data.user.push_devices, 0);
+  // Nothing we sent to our own devices was unreadable.
+  const mineUnreadable = undecryptable.filter((x) => x.path.startsWith(`/${stamp}`));
+  assert.deepEqual(mineUnreadable, [], `undecryptable deliveries: ${JSON.stringify(mineUnreadable)}`);
 
-  for (const [id, tok] of [[pBoost.data.drink.id, b.data.token], [pPass.data.drink.id, a.data.token]]) {
+  for (const [id, tok] of [[benCup.data.drink.id, b.data.token], [anaCup.data.drink.id, a.data.token]]) {
     assert.equal((await call('DELETE', `/api/drinks/${id}`, null, tok)).status, 200);
   }
 

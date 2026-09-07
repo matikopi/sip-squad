@@ -46,9 +46,11 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const isoDay = (s) => (ISO_DAY.test(s || '') ? s : new Date().toISOString().slice(0, 10));
 const withAi = (user) => ({ ...user, ai: aiEnabled(), telegram: tg.telegramEnabled(), sms: sms.smsEnabled(), push: push.pushEnabled() });
 
+// A photo is optional: most cups are logged with one tap and no camera.
 function parsePhoto(dataUrl) {
-  const m = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
-  if (!m) throw new HttpError(400, 'A photo of the empty cup is required');
+  if (!dataUrl) return { mediaType: null, b64: null };
+  const m = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!m) throw new HttpError(400, 'That photo is not a format we can read');
   return { mediaType: `image/${m[1] === 'jpg' ? 'jpeg' : m[1]}`, b64: m[2] };
 }
 
@@ -81,7 +83,7 @@ route('POST', /^\/drinks$/, async (req) => {
   const photo = parsePhoto(b.photo);
   let ml = null, source = null, label = null;
   if (b.ml) { ml = Math.round(Number(b.ml)); source = 'manual'; }
-  else if (aiEnabled()) {
+  else if (aiEnabled() && photo.b64) {
     const guess = await estimateCupMl(photo.b64, photo.mediaType).catch((e) => { console.error('estimate failed:', e.message); return null; });
     if (guess) { ml = guess.ml; source = 'ai'; label = guess.label; }
   }
@@ -92,7 +94,7 @@ route('POST', /^\/drinks$/, async (req) => {
   await Promise.all([
     tg.telegramEnabled() ? notifyCup(token, drink.id) : null,
     sms.smsEnabled() ? notifyPassed(token, drink.id) : null,
-    push.pushEnabled() ? notifyPushPassed(token, drink.id) : null,
+    push.pushEnabled() ? notifyPushCup(token, drink.id) : null,
   ]);
   return { drink };
 });
@@ -114,13 +116,13 @@ async function notifyPassed(token, drinkId) {
   } catch (e) { console.error('sms lookup failed:', e.message); }
 }
 
-// Push the friends this cup just overtook. Dead subscriptions are dropped.
-async function notifyPushPassed(token, drinkId) {
+// Tell the rest of the group about every cup. Dead subscriptions are dropped.
+async function notifyPushCup(token, drinkId) {
   try {
-    const targets = await rpc('sip_push_passed', { p_token: token, p_drink_id: drinkId });
+    const targets = await rpc('sip_push_everyone', { p_token: token, p_drink_id: drinkId });
     await Promise.all((targets || []).map(async (t) => {
       try {
-        const outcome = await push.sendPush(t, push.passedPayload(t, push.APP_URL()));
+        const outcome = await push.sendPush(t, push.cupPayload(t, push.APP_URL()));
         if (outcome === 'gone') await rpc('sip_push_drop', { p_endpoint: t.endpoint });
       } catch (e) { console.error('push failed:', e.message); }
     }));

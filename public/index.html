@@ -50,12 +50,16 @@
     </div>
   </div>
 
-  <label class="btn snap" for="photo-input">
-    <span class="cam">📸</span>
+  <button class="btn snap" id="log-cup">
+    <span class="cam">💧</span>
     <span>I finished a cup</span>
-    <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
-  </label>
+  </button>
   <p class="tiny muted center" id="snap-hint"></p>
+  <p class="center">
+    <label class="link" for="photo-input">or add a photo of the cup
+      <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
+    </label>
+  </p>
 
   <!-- Just logged card -->
   <div class="card logged" id="logged" hidden>

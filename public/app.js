@@ -54,9 +54,7 @@ function enterHome() {
   show('home');
   $('who').textContent = me.name;
   $('goal-ml').textContent = me.goal_ml;
-  $('snap-hint').textContent = me.ai
-    ? 'Snap the empty cup. The app guesses the size, you can adjust.'
-    : `Snap the empty cup. Counts as ${me.cup_ml} ml unless you adjust.`;
+  hint();
   refresh();
   clearInterval(pollTimer);
   pollTimer = setInterval(refresh, 30000);
@@ -99,32 +97,38 @@ function render({ board, feed, my_days }) {
     </li>`).join('') : '<div class="empty">Nobody here yet.</div>';
 
   $('feed').innerHTML = feed.length ? feed.slice(0, 30).map((d) => `
-    <div class="cup" title="${esc(d.label || '')}">
-      <img src="/api/photo/${esc(d.photo_id)}" alt="" loading="lazy">
+    <div class="cup${d.photo_id ? '' : ' nophoto'}" title="${esc(d.label || '')}">
+      ${d.photo_id ? `<img src="/api/photo/${esc(d.photo_id)}" alt="" loading="lazy">` : '<span class="drop">💧</span>'}
       <div class="cap"><b>${esc(d.name)} · ${d.ml} ml</b>${fmtDay(d.day)} ${fmtTime(d.created_at)}</div>
     </div>`).join('') : '<div class="empty">No cups logged in this range. Be the first.</div>';
 }
 
-// ------------------------------------------------------------- snap a cup
-$('photo-input').addEventListener('change', async (e) => {
-  const file = e.target.files && e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  const btn = document.querySelector('.snap');
+// ------------------------------------------------------------- log a cup
+function hint() {
+  $('snap-hint').textContent = `One tap counts as ${me.cup_ml} ml. Adjust it after, or change your cup size in settings.`;
+}
+
+async function logCup(photo) {
+  const btn = $('log-cup');
   btn.classList.add('busy');
-  $('snap-hint').textContent = me.ai ? 'Looking at your cup…' : 'Saving…';
+  $('snap-hint').textContent = photo && me.ai ? 'Looking at your cup…' : 'Saving…';
   try {
-    const photo = await shrink(file);
     const { drink } = await api('POST', '/api/drinks', { photo, day: localDay() });
     showLogged(drink, photo);
     toast(`+${drink.ml} ml 💧`);
     refresh();
   } catch (err) { toast(err.message, 4000); }
-  finally {
-    btn.classList.remove('busy');
-    $('snap-hint').textContent = me.ai ? 'Snap the empty cup. The app guesses the size, you can adjust.'
-                                       : `Snap the empty cup. Counts as ${me.cup_ml} ml unless you adjust.`;
-  }
+  finally { btn.classList.remove('busy'); hint(); }
+}
+
+$('log-cup').addEventListener('click', () => logCup(null));
+
+$('photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try { await logCup(await shrink(file)); }
+  catch (err) { toast(err.message, 4000); }
 });
 
 // Downscale on-device so uploads are ~100 KB instead of ~4 MB phone photos.
@@ -148,8 +152,9 @@ function shrink(file, max = 800) {
 function showLogged(drink, photoUrl) {
   lastLogged = drink;
   $('logged').hidden = false;
-  $('logged-img').src = photoUrl;
-  const srcText = { ai: `Looks like ${drink.label || 'a cup'}`, default: 'Your default cup', manual: 'Set by you' }[drink.source] || '';
+  $('logged-img').hidden = !photoUrl;
+  if (photoUrl) $('logged-img').src = photoUrl;
+  const srcText = { ai: `Looks like ${drink.label || 'a cup'}`, default: 'Your usual cup', manual: 'Set by you' }[drink.source] || '';
   $('logged-title').textContent = `${drink.ml} ml logged`;
   $('logged-sub').textContent = `${srcText}. Tap a size if it's off.`;
   const sizes = CHIP_SIZES.includes(drink.ml) ? CHIP_SIZES : [...CHIP_SIZES, drink.ml].sort((a, b) => a - b);
@@ -188,7 +193,7 @@ $('tabs').addEventListener('click', (e) => {
 
 $('settings-btn').addEventListener('click', () => {
   $('set-cup').value = me.cup_ml; $('set-goal').value = me.goal_ml;
-  $('set-cup-hint').textContent = me.ai ? 'Used only if the photo guess fails.' : 'Every cup counts as this unless you adjust it.';
+  $('set-cup-hint').textContent = 'What one tap counts as. Adjust an individual cup right after logging it.';
   $('tg').hidden = !me.telegram;
   $('tg-status').textContent = me.telegram_linked
     ? 'Linked. Every finished cup is posted to your Telegram group. Send /board there for the leaderboard.'
@@ -223,10 +228,10 @@ async function renderPush() {
   $('push-on').hidden = false;
   $('push-test').hidden = !on;
   $('push-status').textContent = on
-    ? 'On for this device. You get a notification when a friend overtakes you.'
+    ? 'On for this device. You get a notification whenever anyone in the group drinks.'
     : Notification.permission === 'denied'
       ? 'Notifications are blocked in your browser settings for this site. Allow them there, then come back.'
-      : 'Get a notification on this device when a friend overtakes you. Free, no texts.';
+      : 'Get a notification on this device whenever anyone drinks. Free, no texts.';
   if (Notification.permission !== 'denied') err.textContent = '';
 }
 
