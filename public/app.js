@@ -192,7 +192,7 @@ $('settings-btn').addEventListener('click', () => {
   $('tg').hidden = !me.telegram;
   $('tg-status').textContent = me.telegram_linked
     ? 'Linked. Every finished cup is posted to your Telegram group. Send /board there for the leaderboard.'
-    : `Not linked. Add the Sip Squad bot to your Telegram group and send: /link ${me.group}`;
+    : 'Not linked. Add the Sip Squad bot to your Telegram group and send: /link';
   renderSms();
   renderPush();
   $('settings').hidden = false;

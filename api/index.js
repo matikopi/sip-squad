@@ -56,6 +56,7 @@ function parsePhoto(dataUrl) {
 const routes = [];
 const route = (method, pattern, handler) => routes.push({ method, pattern, handler });
 
+// Signing in is a name and nothing else: everyone shares one board.
 route('POST', /^\/join$/, async (req, res) => {
   const b = await body(req);
   const out = await rpc('sip_join', { p_name: String(b.name || ''), p_group: b.group ? String(b.group) : null });
@@ -205,15 +206,15 @@ route('POST', /^\/telegram$/, async (req) => {
   let reply;
   try {
     if (cmd === 'link') {
-      if (!arg) reply = 'Usage: /link &lt;group code&gt; (the code you use in the app)';
-      else { const g = await rpc('sip_link_telegram', { p_code: arg, p_chat_id: chatId }); reply = `Linked to <b>${g.code}</b> (${g.members} member${g.members === 1 ? '' : 's'}). Every finished cup will be posted here. Send /board for the leaderboard.`; }
+      const g = await rpc('sip_link_telegram', { p_code: arg || 'everyone', p_chat_id: chatId });
+      reply = `Linked to <b>${g.code}</b> (${g.members} member${g.members === 1 ? '' : 's'}). Every finished cup will be posted here. Send /board for the leaderboard.`;
     } else if (cmd === 'unlink') {
       const g = await rpc('sip_unlink_telegram', { p_chat_id: chatId });
       reply = g.code ? `Unlinked from <b>${g.code}</b>.` : 'This chat was not linked.';
     } else if (cmd === 'board' || cmd === 'today') {
       const b = await rpc('sip_board_by_chat', { p_chat_id: chatId, p_day: isoDay(null) });
-      reply = b ? tg.boardMessage(b) : 'This chat is not linked yet. Send /link &lt;group code&gt;.';
-    } else reply = 'Sip Squad bot. Commands: /link &lt;group code&gt;, /board, /unlink.';
+      reply = b ? tg.boardMessage(b) : 'This chat is not linked yet. Send /link here.';
+    } else reply = 'Sip Squad bot. Commands: /link, /board, /unlink.';
   } catch (e) { reply = e instanceof HttpError ? e.message : 'Something broke.'; }
   await tg.send(chatId, reply).catch((e) => console.error('telegram reply failed:', e.message));
   return { ok: true };
@@ -226,7 +227,7 @@ route('GET', /^\/telegram\/setup$/, async (req, _res, _m, url) => {
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   await tg.setWebhook(`https://${host}/api/telegram`);
   const me = await tg.getMe();
-  return { ok: true, bot: `@${me.username}`, webhook: `https://${host}/api/telegram`, next: `Add @${me.username} to your Telegram group and send: /link <group code>` };
+  return { ok: true, bot: `@${me.username}`, webhook: `https://${host}/api/telegram`, next: `Add @${me.username} to your Telegram group and send: /link` };
 });
 
 route('PATCH', /^\/drinks\/(\d+)$/, async (req, _res, m) => {

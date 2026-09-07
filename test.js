@@ -141,10 +141,13 @@ try {
   assert.equal((await call('PATCH', `/api/drinks/${d1.data.drink.id}`, { ml: 750 }, a.data.token)).data.drink.ml, 750);
   assert.equal((await call('PATCH', `/api/drinks/${d1.data.drink.id}`, { ml: 1 }, b.data.token)).status, 404);
 
+  // The board is shared, so compare only this run's two players.
+  const mine = (rows) => rows.filter((r) => r.name.endsWith(String(stamp)));
   const today = await call('GET', `/api/board?range=today&day=${TODAY}`, null, a.data.token);
-  assert.deepEqual(today.data.board.map((r) => [r.name, r.ml, r.cups, r.streak]), [[`Ana ${stamp}`, 750, 1, 0], [`Ben ${stamp}`, 500, 1, 0]]);
+  assert.deepEqual(mine(today.data.board).map((r) => [r.name, r.ml, r.cups, r.streak]),
+    [[`Ana ${stamp}`, 750, 1, 0], [`Ben ${stamp}`, 500, 1, 0]]);
   const all = await call('GET', `/api/board?range=all&day=${TODAY}`, null, a.data.token);
-  assert.deepEqual(all.data.board.map((r) => [r.name, r.ml]), [[`Ben ${stamp}`, 850], [`Ana ${stamp}`, 750]]);
+  assert.deepEqual(mine(all.data.board).map((r) => [r.name, r.ml]), [[`Ben ${stamp}`, 850], [`Ana ${stamp}`, 750]]);
   const week = await call('GET', `/api/board?range=week&day=${TODAY}`, null, a.data.token);
   assert.equal(week.data.board.find((r) => r.name === `Ben ${stamp}`).ml, 500);
 
@@ -173,7 +176,9 @@ try {
   const cupMsg = sent.pop();
   assert.equal(cupMsg.chat_id, -100777); assert.match(cupMsg.text, new RegExp(`Ana ${stamp}.*finished cup #3 \\(300 ml\\)`));
   await hook('/board');
-  assert.match(sent.pop().text, new RegExp(`🏆 Ana ${stamp}`));
+  const boardMsg = sent.pop().text;
+  assert.match(boardMsg, new RegExp(`Ana ${stamp}: <b>1300 ml</b> \\(3 cups\\)`), boardMsg);
+  assert.match(boardMsg, new RegExp(`Ben ${stamp}: <b>500 ml</b> \\(1 cup\\)`), boardMsg);
   await hook('/unlink'); assert.match(sent.pop().text, /Unlinked/);
   await call('DELETE', `/api/drinks/${d4.data.drink.id}`, null, a.data.token);
 
