@@ -54,9 +54,34 @@ Setup, once, about five minutes:
 4. Add the bot to your friends' Telegram group and send `/link <group code>`
    in that chat. Done. `/unlink` removes it, `/board` shows the leaderboard.
 
-WhatsApp and SMS are not built in: WhatsApp needs a Meta Business account
-with approved message templates, SMS needs a paid provider such as Twilio.
-Both are possible later behind the same notification hook.
+## Text messages (Twilio)
+
+Optional and per person. In Settings you add your number, get a 6-digit code
+by text, and confirm it. After that you get one text when a friend overtakes
+you on today's board, with a link to the app so you can catch up. Turn it off
+with the toggle or remove the number entirely.
+
+Only one kind of text is sent, so a busy day costs a handful of messages
+rather than one per cup. Codes are limited to one a minute and five an hour,
+expire in ten minutes, and allow five wrong guesses.
+
+To switch it on, set these on Vercel and redeploy:
+
+| Variable | Value |
+|---|---|
+| `TWILIO_ACCOUNT_SID` | starts with `AC`, from the Twilio console |
+| `TWILIO_AUTH_TOKEN` | from the Twilio console |
+| `TWILIO_FROM` | a number you own, e.g. `+14155551234` |
+| `TWILIO_MESSAGING_SERVICE_SID` | alternative to `TWILIO_FROM`, starts with `MG` |
+| `APP_URL` | the link put in the text, defaults to the production URL |
+
+Texting US mobile numbers from a Twilio number also requires A2P 10DLC
+registration (a Brand and a Campaign) regardless of volume. Unregistered
+traffic is filtered by carriers. Web push notifications avoid all of that
+and cost nothing; see the notes at the end of this file.
+
+WhatsApp is not built in: it needs a Meta Business account with approved
+message templates.
 
 ## Architecture
 
@@ -67,7 +92,9 @@ lib/db.js        Calls Supabase PostgREST RPC functions with the publishable key
 lib/estimate.js  Optional Claude vision call.
 sql/001_init.sql The database: tables in schema `sip`, API functions in `public.sip_*`.
 sql/002_...sql   Streaks and Telegram linking.
+sql/003_sms.sql  Phone numbers, verification, who-got-passed lookup.
 lib/telegram.js  Telegram bot messages and webhook helpers.
+lib/sms.js       Twilio client and the two text bodies.
 dev.js           Local dev server (npm run dev).
 test.js          End-to-end API test (npm test).
 ```
@@ -99,12 +126,15 @@ Environment variables (all optional):
 |---|---|
 | `ANTHROPIC_API_KEY` | Enables the AI cup size estimate |
 | `TELEGRAM_BOT_TOKEN` | Enables Telegram group notifications |
+| `TWILIO_ACCOUNT_SID` `TWILIO_AUTH_TOKEN` | Enable text messages |
+| `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID` | Which number the texts come from |
+| `APP_URL` | Link included in texts |
 | `SUPABASE_URL` | Override the Supabase project URL |
 | `SUPABASE_PUBLISHABLE_KEY` | Override the publishable key |
 
 ## Database setup
 
-Run `sql/001_init.sql` then `sql/002_streaks_telegram.sql` against a Supabase project (SQL
+Run `sql/001_init.sql`, `sql/002_streaks_telegram.sql`, then `sql/003_sms.sql` against a Supabase project (SQL
 editor or `supabase db push`) and point the app at that project. To remove it
 completely:
 
@@ -130,6 +160,10 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 | GET | `/api/photo/:id` | A cup photo |
 | POST | `/api/telegram` | Telegram webhook (`/link <code>`, `/board`, `/unlink`) |
 | GET | `/api/telegram/setup?token=` | One-time webhook registration |
+| POST | `/api/phone` | `{phone}` texts a verification code |
+| POST | `/api/phone/confirm` | `{code}` verifies the number |
+| POST | `/api/phone/toggle` | `{enabled}` turns texts on or off |
+| DELETE | `/api/phone` | Removes the number |
 
 Days are counted in each person's local time (the phone sends its local date),
 so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
@@ -143,3 +177,12 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
 - Daily goal defaults to 2000 ml, per person. The ring turns green when hit.
 - Photos are kept forever and visible to everyone in the group.
 - Units are ml.
+
+## Notification options, compared
+
+| Channel | Cost | Setup | Notes |
+|---|---|---|---|
+| Telegram | free | ~5 min | Group chat feed, every cup plus call-outs. Built in. |
+| Web push | free | needs a small amount of code | Lands on the lock screen of the installed app. Not built yet. |
+| SMS (Twilio) | number ~$1/mo plus ~$0.008 a text | account, a number, and A2P 10DLC registration | Built in, works on any phone with no app. |
+| WhatsApp | per message | Meta Business account, approved templates | Not built. |
