@@ -240,8 +240,19 @@ route('PATCH', /^\/drinks\/(\d+)$/, async (req, _res, m) => {
 route('DELETE', /^\/drinks\/(\d+)$/, async (req, _res, m) =>
   rpc('sip_delete_drink', { p_token: requireToken(req), p_id: Number(m[1]) }));
 
-route('GET', /^\/board$/, async (req, _res, _m, url) =>
-  rpc('sip_board', { p_token: requireToken(req), p_range: url.searchParams.get('range') || 'today', p_day: isoDay(url.searchParams.get('day')) }));
+const RANGES = new Set(['today', 'week', 'month', 'all']);
+route('GET', /^\/board$/, async (req, _res, _m, url) => {
+  const asked = url.searchParams.get('range');
+  return rpc('sip_board', {
+    p_token: requireToken(req),
+    p_range: RANGES.has(asked) ? asked : 'today',
+    p_day: isoDay(url.searchParams.get('day')),
+  });
+});
+
+// Your own cups on one day, so an earlier day can be corrected.
+route('GET', /^\/day$/, async (req, _res, _m, url) =>
+  rpc('sip_my_day', { p_token: requireToken(req), p_day: isoDay(url.searchParams.get('day')) }));
 
 route('GET', /^\/photo\/([0-9a-f-]{36})$/, async (_req, res, m) => {
   const photo = await rpc('sip_photo', { p_id: m[1] });

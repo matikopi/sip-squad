@@ -4,17 +4,34 @@ const store = {
   get token() { try { return localStorage.getItem('token'); } catch { return null; } },
   set token(v) { try { v ? localStorage.setItem('token', v) : localStorage.removeItem('token'); } catch {} },
 };
+
+// The slider covers ordinary cups. Anything unusual is still possible by
+// changing your usual cup size in settings.
+const SLIDER = { min: 150, max: 500, step: 50, preset: 350 };
+const snap = (ml) => Math.min(SLIDER.max, Math.max(SLIDER.min, Math.round(ml / SLIDER.step) * SLIDER.step));
+
 let me = null, range = 'today', lastLogged = null, pollTimer = null;
-const CHIP_SIZES = [150, 250, 350, 500, 750, 1000];
+let board = null, dayOpen = null;
 
 // Local calendar day, so a cup at 11pm counts for today in YOUR timezone.
 const localDay = (d = new Date()) => {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
+const dayShift = (iso, days) => {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return localDay(d);
+};
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-const fmtDay = (day) => day === localDay() ? 'today' : new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'short' });
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtDayShort = (day) => day === localDay() ? 'today'
+  : day === dayShift(localDay(), -1) ? 'yest'
+  : new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'short' });
+const fmtDayLong = (day) => day === localDay() ? 'Today'
+  : day === dayShift(localDay(), -1) ? 'Yesterday'
+  : new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function api(method, path, body) {
   const res = await fetch(path, {
@@ -65,8 +82,8 @@ function enterHome() {
 async function refresh() {
   if (!me) return;
   try {
-    const data = await api('GET', `/api/board?range=${range}&day=${localDay()}`);
-    render(data);
+    board = await api('GET', `/api/board?range=${range}&day=${localDay()}`);
+    render(board);
     $('status').textContent = '';
   } catch (err) {
     if (/sign in/i.test(err.message)) { store.token = null; me = null; show('join'); return; }
@@ -74,44 +91,96 @@ async function refresh() {
   }
 }
 
-function render({ board, feed, my_days }) {
+const RANGE_LABEL = { today: 'Today so far', week: 'This week, Monday onwards', month: 'This month', all: 'Everything so far' };
+
+function render(data) {
   const today = localDay();
-  const mine = (my_days || []).find((d) => d.day === today);
+  const byDay = new Map((data.my_days || []).map((d) => [d.day, d]));
+  const mine = byDay.get(today);
   const todayMl = mine ? mine.ml : 0;
-  const todayCups = feed.filter((d) => d.user_id === me.id && d.day === today).length;
-  const pct = Math.min(100, Math.round((todayMl / me.goal_ml) * 100));
+  const todayCups = mine ? mine.cups : 0;
+
   $('today-ml').textContent = todayMl;
-  const myRow = board.find((b) => b.id === me.id);
+  const myRow = (data.board || []).find((b) => b.id === me.id);
   const streak = myRow ? myRow.streak : 0;
-  $('today-cups').textContent = (todayCups ? `${todayCups} cup${todayCups === 1 ? '' : 's'}` : 'no cups yet') + (streak > 0 ? ` · 🔥 ${streak}-day streak` : '');
+  $('today-cups').textContent = (todayCups ? `${todayCups} cup${todayCups === 1 ? '' : 's'}` : 'no cups yet')
+    + (streak > 0 ? ` · 🔥 ${streak}` : '');
   const ring = $('ring');
-  ring.style.setProperty('--p', pct);
+  ring.style.setProperty('--p', Math.min(100, Math.round((todayMl / me.goal_ml) * 100)));
   ring.classList.toggle('done', todayMl >= me.goal_ml);
 
-  const max = Math.max(1, ...board.map((b) => b.ml));
-  $('board').innerHTML = board.length ? board.map((b, i) => `
+  // Leaderboard
+  $('range-label').textContent = RANGE_LABEL[range] || '';
+  const max = Math.max(1, ...(data.board || []).map((b) => b.ml));
+  $('board').innerHTML = (data.board || []).length ? data.board.map((b, i) => `
     <li class="${i === 0 && b.ml > 0 ? 'first' : ''} ${b.id === me.id ? 'me' : ''}">
       <div class="rank">${i === 0 && b.ml > 0 ? '🏆' : i + 1}</div>
-      <div><div class="name">${esc(b.name)}${b.streak > 0 ? ` <span class="streak">🔥${b.streak}</span>` : ''}</div><div class="bar"><i style="width:${(b.ml / max) * 100}%"></i></div></div>
+      <div>
+        <div class="name">${esc(b.name)}${b.streak > 0 ? ` <span class="streak">🔥${b.streak}</span>` : ''}</div>
+        <div class="bar"><i style="width:${(b.ml / max) * 100}%"></i></div>
+      </div>
       <div class="ml">${b.ml} ml<span class="cups">${b.cups} cup${b.cups === 1 ? '' : 's'}</span></div>
     </li>`).join('') : '<div class="empty">Nobody here yet.</div>';
 
+  renderDays(data, byDay);
+
+  // Recent cups
+  const feed = data.feed || [];
   $('feed').innerHTML = feed.length ? feed.slice(0, 30).map((d) => `
     <div class="cup${d.photo_id ? '' : ' nophoto'}" title="${esc(d.label || '')}">
-      ${d.photo_id ? `<img src="/api/photo/${esc(d.photo_id)}" alt="" loading="lazy">` : '<span class="drop">💧</span>'}
-      <div class="cap"><b>${esc(d.name)} · ${d.ml} ml</b>${fmtDay(d.day)} ${fmtTime(d.created_at)}</div>
+      ${d.photo_id ? `<img src="/api/photo/${esc(d.photo_id)}" alt="" loading="lazy">`
+                   : '<span class="drop">💧</span>'}
+      <div class="cap"><b>${esc(d.name)} · ${d.ml} ml</b>${fmtDayShort(d.day)} ${fmtTime(d.created_at)}</div>
     </div>`).join('') : '<div class="empty">No cups logged in this range. Be the first.</div>';
 }
 
+// The day-by-day breakdown under the leaderboard.
+function renderDays(data, byDay) {
+  $('days-card').hidden = range === 'today';
+  if (range === 'today') return;
+
+  const today = localDay();
+  let days = [];
+  if (range === 'all') {
+    days = (data.my_days || []).map((d) => d.day);
+  } else {
+    // Every day of the range up to today, so blank days are visible too.
+    for (let d = data.since; d <= today; d = dayShift(d, 1)) days.push(d);
+    days.reverse();
+  }
+
+  $('days').innerHTML = days.length ? days.map((day) => {
+    const row = byDay.get(day);
+    const ml = row ? row.ml : 0;
+    const cups = row ? row.cups : 0;
+    const pct = Math.min(100, Math.round((ml / me.goal_ml) * 100));
+    const hit = ml >= me.goal_ml;
+    return `
+      <button class="day${hit ? ' hit' : ''}${ml ? '' : ' none'}" data-day="${day}">
+        <div>
+          <div class="date">${esc(fmtDayLong(day))}</div>
+          <div class="sub">${cups ? `${cups} cup${cups === 1 ? '' : 's'}` : 'nothing logged'}${hit ? ' · goal hit' : ''}</div>
+        </div>
+        <div class="amt">${ml} ml</div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+      </button>`;
+  }).join('') : '<div class="empty">Nothing logged yet.</div>';
+}
+
+$('days').addEventListener('click', (e) => {
+  const btn = e.target.closest('.day');
+  if (btn) openDay(btn.dataset.day);
+});
+
 // ------------------------------------------------------------- log a cup
 function hint() {
-  $('snap-hint').textContent = `One tap counts as ${me.cup_ml} ml. Adjust it after, or change your cup size in settings.`;
+  $('tap-hint').textContent = `One tap counts as ${me.cup_ml} ml. Slide to correct it after.`;
 }
 
 async function logCup(photo) {
   const btn = $('log-cup');
   btn.classList.add('busy');
-  $('snap-hint').textContent = photo && me.ai ? 'Looking at your cup…' : 'Saving…';
+  $('tap-hint').textContent = photo && me.ai ? 'Looking at your cup…' : 'Saving…';
   try {
     const { drink } = await api('POST', '/api/drinks', { photo, day: localDay() });
     showLogged(drink, photo);
@@ -154,27 +223,28 @@ function showLogged(drink, photoUrl) {
   $('logged').hidden = false;
   $('logged-img').hidden = !photoUrl;
   if (photoUrl) $('logged-img').src = photoUrl;
-  const srcText = { ai: `Looks like ${drink.label || 'a cup'}`, default: 'Your usual cup', manual: 'Set by you' }[drink.source] || '';
+  const src = { ai: `Looks like ${drink.label || 'a cup'}`, default: 'Your usual cup', manual: 'Set by you' };
   $('logged-title').textContent = `${drink.ml} ml logged`;
-  $('logged-sub').textContent = `${srcText}. Tap a size if it's off.`;
-  const sizes = CHIP_SIZES.includes(drink.ml) ? CHIP_SIZES : [...CHIP_SIZES, drink.ml].sort((a, b) => a - b);
-  $('logged-chips').innerHTML = sizes.map((ml) =>
-    `<button data-ml="${ml}" class="${ml === drink.ml ? 'active' : ''}">${ml}</button>`).join('');
+  $('logged-sub').textContent = `${src[drink.source] || ''}. Slide to change it.`;
+  $('logged-range').value = snap(drink.ml);
+  $('logged-value').textContent = drink.ml;
   $('logged').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-$('logged-chips').addEventListener('click', async (e) => {
-  const ml = Number(e.target.dataset.ml);
-  if (!ml || !lastLogged) return;
+// Show the number while dragging, save once the finger lifts.
+$('logged-range').addEventListener('input', (e) => { $('logged-value').textContent = e.target.value; });
+$('logged-range').addEventListener('change', async (e) => {
+  if (!lastLogged) return;
+  const ml = Number(e.target.value);
   try {
     const { drink } = await api('PATCH', `/api/drinks/${lastLogged.id}`, { ml });
     lastLogged = { ...lastLogged, ...drink };
     $('logged-title').textContent = `${drink.ml} ml logged`;
-    $('logged-sub').textContent = 'Set by you.';
-    [...$('logged-chips').children].forEach((b) => b.classList.toggle('active', Number(b.dataset.ml) === ml));
+    $('logged-sub').textContent = 'Set by you. Slide to change it.';
     refresh();
   } catch (err) { toast(err.message); }
 });
+
 $('logged-undo').addEventListener('click', async () => {
   if (!lastLogged) return;
   try { await api('DELETE', `/api/drinks/${lastLogged.id}`); toast('Removed'); }
@@ -183,7 +253,7 @@ $('logged-undo').addEventListener('click', async () => {
 });
 $('logged-done').addEventListener('click', () => { $('logged').hidden = true; lastLogged = null; });
 
-// ------------------------------------------------------------- tabs & settings
+// ------------------------------------------------------------- ranges
 $('tabs').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   range = b.dataset.range;
@@ -191,18 +261,94 @@ $('tabs').addEventListener('click', (e) => {
   refresh();
 });
 
+// ------------------------------------------------------------- one day
+async function openDay(day) {
+  dayOpen = day;
+  $('day-error').textContent = '';
+  $('day-title').textContent = fmtDayLong(day);
+  $('day-cups').innerHTML = '<div class="empty">Loading…</div>';
+  $('day-range').value = SLIDER.preset;
+  $('day-value').textContent = SLIDER.preset;
+  $('day-sheet').hidden = false;
+  await loadDay();
+}
+
+async function loadDay() {
+  try {
+    const data = await api('GET', `/api/day?day=${dayOpen}`);
+    const cups = data.cups || [];
+    const total = cups.reduce((n, c) => n + c.ml, 0);
+    $('day-total').textContent = cups.length
+      ? `${total} ml of ${data.goal_ml} ml, ${cups.length} cup${cups.length === 1 ? '' : 's'}`
+      : 'Nothing logged on this day yet.';
+    $('day-cups').innerHTML = cups.map((c) => `
+      <div class="cup-row" data-id="${c.id}">
+        <span class="when">${fmtTime(c.created_at)}</span>
+        <span class="amt">${c.ml} ml</span>
+        <button data-remove="${c.id}" aria-label="Remove this cup">✕</button>
+      </div>`).join('');
+  } catch (err) { $('day-error').textContent = err.message; }
+}
+
+$('day-range').addEventListener('input', (e) => { $('day-value').textContent = e.target.value; });
+
+$('day-add').addEventListener('click', async () => {
+  const btn = $('day-add'); btn.disabled = true; $('day-error').textContent = '';
+  try {
+    await api('POST', '/api/drinks', { day: dayOpen, ml: Number($('day-range').value) });
+    toast('Added');
+    await loadDay();
+    refresh();
+  } catch (err) { $('day-error').textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+
+$('day-cups').addEventListener('click', async (e) => {
+  const id = e.target.dataset && e.target.dataset.remove;
+  if (!id) return;
+  e.target.disabled = true;
+  try {
+    await api('DELETE', `/api/drinks/${id}`);
+    if (lastLogged && String(lastLogged.id) === String(id)) { $('logged').hidden = true; lastLogged = null; }
+    await loadDay();
+    refresh();
+  } catch (err) { $('day-error').textContent = err.message; e.target.disabled = false; }
+});
+
+const closeDay = () => { $('day-sheet').hidden = true; dayOpen = null; };
+$('day-close').addEventListener('click', closeDay);
+$('day-sheet').addEventListener('click', (e) => { if (e.target === $('day-sheet')) closeDay(); });
+
+// ------------------------------------------------------------- settings
 $('settings-btn').addEventListener('click', () => {
-  $('set-cup').value = me.cup_ml; $('set-goal').value = me.goal_ml;
-  $('set-cup-hint').textContent = 'What one tap counts as. Adjust an individual cup right after logging it.';
+  $('set-cup').value = me.cup_ml;
+  $('set-goal').value = me.goal_ml;
   $('tg').hidden = !me.telegram;
   $('tg-status').textContent = me.telegram_linked
-    ? 'Linked. Every finished cup is posted to your Telegram group. Send /board there for the leaderboard.'
+    ? 'Linked. Every cup is posted to your Telegram group. Send /board there for the leaderboard.'
     : 'Not linked. Add the Sip Squad bot to your Telegram group and send: /link';
   renderSms();
   renderPush();
   $('settings').hidden = false;
 });
-$('settings').addEventListener('click', (e) => { if (e.target === $('settings')) $('settings').hidden = true; });
+const closeSettings = () => { $('settings').hidden = true; };
+$('settings-close').addEventListener('click', closeSettings);
+$('settings').addEventListener('click', (e) => { if (e.target === $('settings')) closeSettings(); });
+
+$('set-save').addEventListener('click', async () => {
+  try {
+    const { user } = await api('PATCH', '/api/me', { cup_ml: $('set-cup').value, goal_ml: $('set-goal').value });
+    me = user;
+    $('goal-ml').textContent = me.goal_ml;
+    closeSettings(); hint(); toast('Saved'); refresh();
+  } catch (err) { toast(err.message); }
+});
+
+$('logout').addEventListener('click', async () => {
+  await api('POST', '/api/logout').catch(() => {});
+  store.token = null; me = null; clearInterval(pollTimer);
+  closeSettings(); show('join');
+});
 
 // ---- push notifications ----------------------------------------------------
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -216,7 +362,6 @@ async function currentSub() {
 async function renderPush() {
   $('push').hidden = !me.push;
   if (!me.push) return;
-  const err = $('push-error');
   if (!pushSupported()) {
     $('push-status').textContent = 'This browser cannot do notifications. On an iPhone, add the app to your home screen first, then open it from there.';
     $('push-on').hidden = true; $('push-test').hidden = true;
@@ -230,9 +375,9 @@ async function renderPush() {
   $('push-status').textContent = on
     ? 'On for this device. You get a notification whenever anyone in the group drinks.'
     : Notification.permission === 'denied'
-      ? 'Notifications are blocked in your browser settings for this site. Allow them there, then come back.'
-      : 'Get a notification on this device whenever anyone drinks. Free, no texts.';
-  if (Notification.permission !== 'denied') err.textContent = '';
+      ? 'Notifications are blocked for this site in your browser settings. Allow them there, then come back.'
+      : 'Get a notification whenever anyone drinks. Free, no texts.';
+  if (Notification.permission !== 'denied') $('push-error').textContent = '';
 }
 
 // The browser wants the VAPID key as bytes, not base64url text.
@@ -284,7 +429,7 @@ function renderSms() {
   $('sms-on').hidden = !verified;
   $('sms-toggle').checked = me.sms_enabled;
   $('sms-status').textContent = verified
-    ? `Texting ••• ${me.phone_last4}. You get a text when a friend overtakes you, with a link to log a cup.`
+    ? `Texting ••• ${me.phone_last4}. A text arrives when a friend overtakes you.`
     : me.phone_pending ? 'Enter the code we just texted you.'
     : 'Add your number and we will text you when a friend overtakes you. Standard rates apply.';
   $('sms-error').textContent = '';
@@ -319,18 +464,6 @@ $('sms-remove').addEventListener('click', async () => {
 });
 $('sms-toggle').addEventListener('change', async () => {
   try { await smsCall('POST', '/api/phone/toggle', { enabled: $('sms-toggle').checked }, null); } catch {}
-});
-$('set-save').addEventListener('click', async () => {
-  try {
-    const { user } = await api('PATCH', '/api/me', { cup_ml: $('set-cup').value, goal_ml: $('set-goal').value });
-    me = user; $('settings').hidden = true; $('goal-ml').textContent = me.goal_ml;
-    toast('Saved'); refresh();
-  } catch (err) { toast(err.message); }
-});
-$('logout').addEventListener('click', async () => {
-  await api('POST', '/api/logout').catch(() => {});
-  store.token = null; me = null; clearInterval(pollTimer);
-  $('settings').hidden = true; show('join');
 });
 
 // ------------------------------------------------------------- boot

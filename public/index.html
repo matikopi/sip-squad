@@ -15,27 +15,28 @@
 </head>
 <body>
 
-<!-- Join screen -->
+<!-- Sign in -->
 <section id="join" class="screen" hidden>
   <div class="join-card">
     <div class="logo">💧</div>
     <h1>Sip Squad</h1>
-    <p class="muted">Finish a cup, snap the empty cup, climb the board.</p>
+    <p class="muted">Finish a cup, tap the button, climb the board.</p>
     <form id="join-form">
-      <label>Your name<input name="name" maxlength="24" autocomplete="nickname" required placeholder="e.g. Mati" autocapitalize="words"></label>
-      <button class="btn primary" type="submit">Let's drink</button>
+      <label>Your name<input name="name" maxlength="24" autocomplete="nickname" required
+        placeholder="e.g. Mati" autocapitalize="words"></label>
+      <button class="btn" type="submit">Let's drink</button>
       <p class="error" id="join-error"></p>
     </form>
     <p class="tiny muted">Just your name. No password, and you stay signed in.</p>
   </div>
 </section>
 
-<!-- Main screen -->
+<!-- Main -->
 <section id="home" class="screen" hidden>
   <header>
-    <div>
+    <div class="who-wrap">
       <div class="tiny muted">Sip Squad</div>
-      <div class="group-code" id="who"></div>
+      <div class="who" id="who"></div>
     </div>
     <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙️</button>
   </header>
@@ -45,46 +46,65 @@
       <div class="ring-inner">
         <div class="big" id="today-ml">0</div>
         <div class="tiny muted">of <span id="goal-ml">2000</span> ml today</div>
-        <div class="tiny" id="today-cups"></div>
+        <div class="tiny accent" id="today-cups"></div>
       </div>
     </div>
   </div>
 
-  <button class="btn snap" id="log-cup">
-    <span class="cam">💧</span>
+  <button class="btn tap" id="log-cup">
+    <span class="drop">💧</span>
     <span>I finished a cup</span>
   </button>
-  <p class="tiny muted center" id="snap-hint"></p>
+  <p class="tiny muted center" id="tap-hint"></p>
   <p class="center">
     <label class="link" for="photo-input">or add a photo of the cup
       <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
     </label>
   </p>
 
-  <!-- Just logged card -->
+  <!-- The cup just logged, with a slider to correct it -->
   <div class="card logged" id="logged" hidden>
-    <img id="logged-img" alt="">
-    <div class="logged-body">
-      <div class="logged-title" id="logged-title"></div>
-      <div class="tiny muted" id="logged-sub"></div>
-      <div class="chips" id="logged-chips"></div>
-      <div class="row">
-        <button class="btn ghost small" id="logged-undo">Undo</button>
-        <button class="btn small" id="logged-done">Done</button>
+    <div class="logged-head">
+      <img id="logged-img" alt="" hidden>
+      <div class="logged-text">
+        <div class="logged-title" id="logged-title"></div>
+        <div class="tiny muted" id="logged-sub"></div>
       </div>
+    </div>
+
+    <div class="slider">
+      <div class="slider-value"><span id="logged-value">350</span><small>ml</small></div>
+      <input type="range" id="logged-range" min="150" max="500" step="50" value="350"
+        aria-label="Amount in millilitres">
+      <div class="slider-ends"><span>150</span><span>500</span></div>
+    </div>
+
+    <div class="row">
+      <button class="btn ghost small" id="logged-undo">Undo</button>
+      <button class="btn small" id="logged-done">Done</button>
     </div>
   </div>
 
+  <!-- Leaderboard -->
   <div class="card">
     <div class="card-head">
       <h2>Leaderboard</h2>
-      <div class="tabs" id="tabs">
-        <button data-range="today" class="active">Today</button>
-        <button data-range="week">Week</button>
-        <button data-range="all">All</button>
-      </div>
     </div>
+    <div class="tabs" id="tabs">
+      <button data-range="today" class="active">Today</button>
+      <button data-range="week">Week</button>
+      <button data-range="month">Month</button>
+      <button data-range="all">All</button>
+    </div>
+    <p class="tiny muted" id="range-label"></p>
     <ol class="board" id="board"></ol>
+  </div>
+
+  <!-- Your days, shown for any range other than today -->
+  <div class="card" id="days-card" hidden>
+    <h2>Your days</h2>
+    <p class="tiny muted">Tap a day to add or fix cups.</p>
+    <div class="days" id="days"></div>
   </div>
 
   <div class="card">
@@ -95,23 +115,46 @@
   <p class="tiny muted center" id="status"></p>
 </section>
 
-<!-- Settings sheet -->
+<!-- Editing one day -->
+<div class="sheet" id="day-sheet" hidden>
+  <div class="sheet-body">
+    <div class="sheet-head">
+      <h2 id="day-title">Day</h2>
+      <button class="icon-btn" id="day-close" aria-label="Close">✕</button>
+    </div>
+    <p class="tiny muted" id="day-total"></p>
+    <div class="cups" id="day-cups"></div>
+
+    <div class="slider">
+      <div class="slider-value"><span id="day-value">350</span><small>ml</small></div>
+      <input type="range" id="day-range" min="150" max="500" step="50" value="350"
+        aria-label="Amount in millilitres">
+      <div class="slider-ends"><span>150</span><span>500</span></div>
+    </div>
+    <button class="btn" id="day-add">Add a cup to this day</button>
+    <p class="error" id="day-error"></p>
+  </div>
+</div>
+
+<!-- Settings -->
 <div class="sheet" id="settings" hidden>
   <div class="sheet-body">
-    <h2>Settings</h2>
-    <label>Default cup size (ml)
-      <input id="set-cup" type="number" min="30" max="3000" step="10">
-      <span class="tiny muted" id="set-cup-hint"></span>
-    </label>
-    <label>Daily goal (ml)<input id="set-goal" type="number" min="250" max="10000" step="50"></label>
-    <p class="tiny muted">Streak 🔥 counts days in a row you hit your goal.</p>
-    <div id="tg" hidden>
-      <div class="tg-head">Telegram group notifications</div>
-      <p class="tiny muted" id="tg-status"></p>
+    <div class="sheet-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="settings-close" aria-label="Close">✕</button>
     </div>
 
-    <div id="push" hidden>
-      <div class="tg-head">Notify me on this phone</div>
+    <label>Your usual cup (ml)
+      <input id="set-cup" type="number" min="30" max="3000" step="10" inputmode="numeric">
+      <span class="tiny muted">What one tap counts as. Correct a single cup with the slider after logging it.</span>
+    </label>
+    <label>Daily goal (ml)
+      <input id="set-goal" type="number" min="250" max="10000" step="50" inputmode="numeric">
+    </label>
+    <p class="tiny muted">Streak 🔥 counts days in a row you hit your goal.</p>
+
+    <div class="section" id="push" hidden>
+      <div class="section-head">Notify me on this phone</div>
       <p class="tiny muted" id="push-status"></p>
       <div class="row">
         <button class="btn ghost small" id="push-test" hidden>Send a test</button>
@@ -120,8 +163,13 @@
       <p class="error" id="push-error"></p>
     </div>
 
-    <div id="sms" hidden>
-      <div class="tg-head">Text me when a friend passes me</div>
+    <div class="section" id="tg" hidden>
+      <div class="section-head">Telegram group</div>
+      <p class="tiny muted" id="tg-status"></p>
+    </div>
+
+    <div class="section" id="sms" hidden>
+      <div class="section-head">Text me when a friend passes me</div>
       <p class="tiny muted" id="sms-status"></p>
       <div id="sms-add">
         <input id="sms-phone" type="tel" autocomplete="tel" placeholder="+1 415 555 1234">
@@ -140,6 +188,7 @@
       </div>
       <p class="error" id="sms-error"></p>
     </div>
+
     <div class="row">
       <button class="btn ghost small" id="logout">Sign out</button>
       <button class="btn small" id="set-save">Save</button>

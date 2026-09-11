@@ -13,9 +13,15 @@ Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 3. Tap **I finished a cup**. Done, one tap.
 
 A cup counts as your usual cup size, 350 ml unless you change it in settings.
-Tap a different size on the card that appears if a particular cup was bigger
-or smaller. Adding a photo is optional, through the small link under the
-button, and photo-less cups show as a plain tile in the feed.
+The card that appears after has a slider, 150 to 500 ml in steps of 50, for
+when a particular cup was bigger or smaller. Adding a photo is optional,
+through the small link under the button, and photo-less cups show as a plain
+tile in the feed.
+
+The leaderboard has four ranges: Today, Week, Month and All. On anything but
+Today, a "Your days" list appears underneath with a row per day. Tap a day to
+see its cups, add one with the slider, or remove one. Cups can be logged for
+today and any earlier day within a year, never the future.
 
 Everyone shares one board, so there is no group code. Typing the same name
 again gets you the same account, from any device.
@@ -142,6 +148,7 @@ sql/003_sms.sql  Phone numbers, verification, who-got-passed lookup.
 sql/004_push.sql Push subscriptions per device.
 sql/005_...sql   One shared board and name-only sign-in.
 sql/006_...sql   Optional photo, and notifying the group on every cup.
+sql/007_...sql   Month range, per-day history, editing earlier days.
 lib/telegram.js  Telegram bot messages and webhook helpers.
 lib/sms.js       Twilio client and the two text bodies.
 lib/push.js      Web push: aes128gcm payload encryption and VAPID signing.
@@ -216,7 +223,8 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 | GET / PATCH | `/api/me` | Read or change `cup_ml`, `goal_ml` |
 | POST | `/api/drinks` | `{day: YYYY-MM-DD, ml?, photo?}` -> `{drink}` |
 | PATCH / DELETE | `/api/drinks/:id` | Fix the amount or remove (own cups only) |
-| GET | `/api/board?range=today\|week\|all&day=YYYY-MM-DD` | Leaderboard, feed, your daily totals |
+| GET | `/api/board?range=today\|week\|month\|all&day=YYYY-MM-DD` | Leaderboard, feed, your daily totals |
+| GET | `/api/day?day=YYYY-MM-DD` | Your cups on one day |
 | GET | `/api/photo/:id` | A cup photo |
 | POST | `/api/telegram` | Telegram webhook (`/link <code>`, `/board`, `/unlink`) |
 | GET | `/api/telegram/setup?token=` | One-time webhook registration |
@@ -234,7 +242,9 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
 
 ## Assumptions (change any of them)
 
-- One tap = one full cup of your usual size. Drank half? Adjust the ml.
+- One tap = one full cup of your usual size. Drank half? Slide it down.
+- The slider covers 150 to 500 ml. Anything unusual means changing your usual
+  cup size in settings, which accepts 30 to 3000 ml.
 - A photo is optional.
 - One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.

@@ -1,6 +1,6 @@
 {
   "name": "sip-squad",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Snap your empty cup, track your water, compete with friends",
   "type": "module",
   "private": true,

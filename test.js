@@ -168,6 +168,33 @@ try {
   const week = await call('GET', `/api/board?range=week&day=${TODAY}`, null, a.data.token);
   assert.equal(week.data.board.find((r) => r.name === `Ben ${stamp}`).ml, 500);
 
+  // ---- month, and the per-day history behind the "Your days" list
+  const month = await call('GET', `/api/board?range=month&day=${TODAY}`, null, a.data.token);
+  assert.equal(month.data.range, 'month');
+  assert.match(month.data.since, /^\d{4}-\d{2}-01$/, 'a month starts on the 1st');
+  assert.ok(month.data.my_days.every((d) => d.cups >= 1), 'every history row carries a cup count');
+  const todayRow = month.data.my_days.find((d) => d.day === TODAY);
+  assert.equal(todayRow.ml, 750, 'my own total for today');
+  assert.equal(todayRow.cups, 1);
+  // an unknown range falls back to today rather than erroring
+  assert.equal((await call('GET', '/api/board?range=nonsense', null, a.data.token)).data.range, 'today');
+
+  // ---- editing an earlier day
+  const dayView = await call('GET', `/api/day?day=${LAST_WEEK}`, null, b.data.token);
+  assert.equal(dayView.status, 200);
+  assert.equal(dayView.data.cups.length, 1, 'Ben logged one cup a week ago');
+  const addedBack = await call('POST', '/api/drinks', { day: LAST_WEEK, ml: 400 }, b.data.token);
+  assert.equal(addedBack.status, 200, 'a cup can be added to an earlier day');
+  assert.equal(addedBack.data.drink.day, LAST_WEEK);
+  const dayView2 = await call('GET', `/api/day?day=${LAST_WEEK}`, null, b.data.token);
+  assert.deepEqual(dayView2.data.cups.map((c) => c.ml), [350, 400], 'in the order logged');
+  assert.equal((await call('DELETE', `/api/drinks/${addedBack.data.drink.id}`, null, b.data.token)).status, 200);
+  // the future is refused
+  const future = await call('POST', '/api/drinks', { day: iso(3), ml: 350 }, b.data.token);
+  assert.equal(future.status, 400, 'cannot log a cup in the future');
+  // a day with nothing on it is an empty list, not an error
+  assert.deepEqual((await call('GET', `/api/day?day=${iso(-30)}`, null, b.data.token)).data.cups, []);
+
   assert.equal((await call('PATCH', '/api/me', { cup_ml: 250, goal_ml: 3000 }, a.data.token)).data.user.cup_ml, 250);
   const d3 = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY }, a.data.token);
   assert.equal(d3.data.drink.ml, 250);
