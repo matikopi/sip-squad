@@ -95,7 +95,7 @@ async function refresh() {
   }
 }
 
-const RANGE_LABEL = { today: 'Today so far', week: 'This week, Monday onwards', month: 'This month', all: 'Everything so far' };
+const RANGE_LABEL = { today: 'Today so far', week: 'This week, Sunday onwards', month: 'This month', all: 'Everything so far' };
 
 function render(data) {
   const today = localDay();

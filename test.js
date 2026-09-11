@@ -167,6 +167,9 @@ try {
   assert.deepEqual(mine(all.data.board).map((r) => [r.name, r.ml]), [[`Ben ${stamp}`, 850], [`Ana ${stamp}`, 750]]);
   const week = await call('GET', `/api/board?range=week&day=${TODAY}`, null, a.data.token);
   assert.equal(week.data.board.find((r) => r.name === `Ben ${stamp}`).ml, 500);
+  // weeks start on Sunday, and never start after today
+  assert.equal(new Date(week.data.since + 'T12:00:00Z').getUTCDay(), 0, 'the week starts on a Sunday');
+  assert.ok(week.data.since <= TODAY && week.data.since > iso(-7), 'and it is this week, not the last one');
 
   // ---- month, and the per-day history behind the "Your days" list
   const month = await call('GET', `/api/board?range=month&day=${TODAY}`, null, a.data.token);

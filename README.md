@@ -159,6 +159,7 @@ sql/005_...sql   One shared board and name-only sign-in.
 sql/006_...sql   Optional photo, and notifying the group on every cup.
 sql/007_...sql   Month range, per-day history, editing earlier days.
 sql/008_...sql   Per-person daily totals behind the day-by-day chart.
+sql/009_...sql   Weeks start on Sunday.
 lib/telegram.js  Telegram bot messages and webhook helpers.
 lib/sms.js       Twilio client and the two text bodies.
 lib/push.js      Web push: aes128gcm payload encryption and VAPID signing.
@@ -248,7 +249,7 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 | POST | `/api/push/test` | Sends a test notification to your devices |
 
 Days are counted in each person's local time (the phone sends its local date),
-so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
+so a cup at 11:30 pm counts for that person's today. Weeks start Sunday.
 
 ## Assumptions (change any of them)
 
