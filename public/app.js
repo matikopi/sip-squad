@@ -3,6 +3,8 @@ const $ = (id) => document.getElementById(id);
 const store = {
   get token() { try { return localStorage.getItem('token'); } catch { return null; } },
   set token(v) { try { v ? localStorage.setItem('token', v) : localStorage.removeItem('token'); } catch {} },
+  get who() { try { return localStorage.getItem('who') === 'all' ? 'all' : 'me'; } catch { return 'me'; } },
+  set who(v) { try { localStorage.setItem('who', v); } catch {} },
 };
 
 // The slider covers ordinary cups. Anything unusual is still possible by
@@ -11,7 +13,8 @@ const SLIDER = { min: 150, max: 500, step: 50, preset: 350 };
 const snap = (ml) => Math.min(SLIDER.max, Math.max(SLIDER.min, Math.round(ml / SLIDER.step) * SLIDER.step));
 
 let me = null, range = 'today', lastLogged = null, pollTimer = null;
-let board = null, dayOpen = null;
+let board = null, dayOpen = null, cupOpen = null;
+let whoMode = store.who;
 
 // Local calendar day, so a cup at 11pm counts for today in YOUR timezone.
 const localDay = (d = new Date()) => {
@@ -69,6 +72,7 @@ $('join-form').addEventListener('submit', async (e) => {
 
 function enterHome() {
   show('home');
+  [...$('who-tabs').children].forEach((x) => x.classList.toggle('active', x.dataset.who === whoMode));
   $('who').textContent = me.name;
   $('goal-ml').textContent = me.goal_ml;
   hint();
@@ -95,8 +99,7 @@ const RANGE_LABEL = { today: 'Today so far', week: 'This week, Monday onwards', 
 
 function render(data) {
   const today = localDay();
-  const byDay = new Map((data.my_days || []).map((d) => [d.day, d]));
-  const mine = byDay.get(today);
+  const mine = (data.days || []).find((r) => r.day === today && r.user_id === me.id);
   const todayMl = mine ? mine.ml : 0;
   const todayCups = mine ? mine.cups : 0;
 
@@ -122,54 +125,111 @@ function render(data) {
       <div class="ml">${b.ml} ml<span class="cups">${b.cups} cup${b.cups === 1 ? '' : 's'}</span></div>
     </li>`).join('') : '<div class="empty">Nobody here yet.</div>';
 
-  renderDays(data, byDay);
+  renderChart(data);
 
   // Recent cups
   const feed = data.feed || [];
   $('feed').innerHTML = feed.length ? feed.slice(0, 30).map((d) => `
-    <div class="cup${d.photo_id ? '' : ' nophoto'}" title="${esc(d.label || '')}">
+    <button class="cup${d.photo_id ? '' : ' nophoto'}${d.user_id === me.id ? ' mine' : ''}"
+      data-id="${d.id}" title="${esc(d.label || '')}">
       ${d.photo_id ? `<img src="/api/photo/${esc(d.photo_id)}" alt="" loading="lazy">`
                    : '<span class="drop">💧</span>'}
       <div class="cap"><b>${esc(d.name)} · ${d.ml} ml</b>${fmtDayShort(d.day)} ${fmtTime(d.created_at)}</div>
-    </div>`).join('') : '<div class="empty">No cups logged in this range. Be the first.</div>';
+    </button>`).join('') : '<div class="empty">No cups logged in this range. Be the first.</div>';
 }
 
-// The day-by-day breakdown under the leaderboard.
-function renderDays(data, byDay) {
+// ------------------------------------------------- day by day, as a chart
+const PLOT_H = 150;   // height of the bar area in pixels
+const TICK_H = 20;    // the day label under each column
+const MAX_COLS = 90;  // enough history to scroll through, not enough to choke
+
+let chartKey = '', chartScroll = 0;
+
+// Me first, then everyone else by name, so a bar keeps its position in a
+// column from one day to the next.
+const peopleOrder = (data) => (data.board || []).slice().sort((a, b) =>
+  a.id === me.id ? -1 : b.id === me.id ? 1 : a.name.localeCompare(b.name));
+
+function chartDays(data) {
+  const today = localDay();
+  let days = [];
+  if (range === 'all') {
+    days = [...new Set((data.days || []).map((d) => d.day))].sort();
+    if (!days.includes(today)) days.push(today);
+  } else {
+    // Every day of the range up to today, so days with nothing are visible.
+    for (let d = data.since; d <= today; d = dayShift(d, 1)) days.push(d);
+  }
+  return days.length > MAX_COLS ? days.slice(-MAX_COLS) : days;
+}
+
+const tickLabel = (day) => range === 'week'
+  ? new Date(day + 'T12:00:00').toLocaleDateString([], { weekday: 'narrow' })
+  : String(Number(day.slice(8, 10)));
+
+function renderChart(data) {
   $('days-card').hidden = range === 'today';
   if (range === 'today') return;
 
   const today = localDay();
-  let days = [];
-  if (range === 'all') {
-    days = (data.my_days || []).map((d) => d.day);
-  } else {
-    // Every day of the range up to today, so blank days are visible too.
-    for (let d = data.since; d <= today; d = dayShift(d, 1)) days.push(d);
-    days.reverse();
-  }
+  const people = peopleOrder(data);
+  const shown = whoMode === 'all' ? people : people.filter((p) => p.id === me.id);
+  const by = new Map((data.days || []).map((r) => [`${r.day}|${r.user_id}`, r]));
+  const days = chartDays(data);
+  const val = (day, p) => (by.get(`${day}|${p.id}`) || {}).ml || 0;
 
-  $('days').innerHTML = days.length ? days.map((day) => {
-    const row = byDay.get(day);
-    const ml = row ? row.ml : 0;
-    const cups = row ? row.cups : 0;
-    const pct = Math.min(100, Math.round((ml / me.goal_ml) * 100));
-    const hit = ml >= me.goal_ml;
-    return `
-      <button class="day${hit ? ' hit' : ''}${ml ? '' : ' none'}" data-day="${day}">
-        <div>
-          <div class="date">${esc(fmtDayLong(day))}</div>
-          <div class="sub">${cups ? `${cups} cup${cups === 1 ? '' : 's'}` : 'nothing logged'}${hit ? ' · goal hit' : ''}</div>
-        </div>
-        <div class="amt">${ml} ml</div>
-        <div class="bar"><i style="width:${pct}%"></i></div>
-      </button>`;
-  }).join('') : '<div class="empty">Nothing logged yet.</div>';
+  // Headroom above the tallest bar so the goal line is never at the very top.
+  const top = Math.max(me.goal_ml, ...days.map((d) => Math.max(0, ...shown.map((p) => val(d, p))))) * 1.1;
+  const colW = Math.max(24, 6 + shown.length * 13);
+
+  const cols = days.map((day) => {
+    const bars = shown.map((p) => {
+      const ml = val(day, p);
+      const h = ml ? Math.max(3, Math.round((ml / top) * PLOT_H)) : 0;
+      return `<i class="bar${ml >= p.goal_ml ? ' hit' : ''}${p.id === me.id ? ' mine' : ''}"
+        style="height:${h}px"></i>`;
+    }).join('');
+    return `<button class="col${day === today ? ' now' : ''}" data-day="${day}" style="--w:${colW}px"
+      aria-label="${esc(fmtDayLong(day))}, ${val(day, me)} ml">
+      <span class="bars" style="height:${PLOT_H}px">${bars}</span>
+      <span class="tick">${esc(tickLabel(day))}</span>
+    </button>`;
+  }).join('');
+
+  const key = `${range}|${whoMode}|${days.length}|${days[0]}`;
+  const keep = key === chartKey ? chartScroll : null;
+
+  $('chart').innerHTML = days.length ? `
+    <div class="plot-wrap" id="plot-wrap"><div class="plot${shown.length === 1 ? ' solo' : ''}">${cols}</div></div>
+    <div class="goal-line" style="bottom:${TICK_H + Math.round((me.goal_ml / top) * PLOT_H)}px">
+      <span>${me.goal_ml}</span>
+    </div>` : '<div class="empty">Nothing logged yet.</div>';
+
+  const wrap = $('plot-wrap');
+  if (wrap) {
+    // Newest day is on the right, so start there unless you scrolled already.
+    wrap.scrollLeft = keep === null ? wrap.scrollWidth : keep;
+    wrap.addEventListener('scroll', () => { chartScroll = wrap.scrollLeft; });
+  }
+  chartKey = key;
+
+  $('chart-note').textContent =
+    (shown.length > 1 ? `Left to right in each day: ${shown.map((p) => p.name).join(', ')}. ` : '')
+    + `The dashed line is your goal, ${me.goal_ml} ml. Green means it was met. `
+    + 'Tap a day to add or fix your cups.';
 }
 
-$('days').addEventListener('click', (e) => {
-  const btn = e.target.closest('.day');
-  if (btn) openDay(btn.dataset.day);
+$('chart').addEventListener('click', (e) => {
+  const col = e.target.closest('.col');
+  if (col) openDay(col.dataset.day);
+});
+
+$('who-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  whoMode = b.dataset.who;
+  store.who = whoMode;
+  [...$('who-tabs').children].forEach((x) => x.classList.toggle('active', x === b));
+  if (board) renderChart(board);
 });
 
 // ------------------------------------------------------------- log a cup
@@ -262,10 +322,21 @@ $('tabs').addEventListener('click', (e) => {
 });
 
 // ------------------------------------------------------------- one day
+// What the whole board drank on one day, from the numbers already loaded.
+function dayPeople(day) {
+  const names = new Map((board && board.board || []).map((b) => [b.id, b.name]));
+  return ((board && board.days) || [])
+    .filter((r) => r.day === day)
+    .sort((a, b) => b.ml - a.ml)
+    .map((r) => `${names.get(r.user_id) || 'Someone'} ${r.ml} ml`)
+    .join(' · ');
+}
+
 async function openDay(day) {
   dayOpen = day;
   $('day-error').textContent = '';
   $('day-title').textContent = fmtDayLong(day);
+  $('day-people').textContent = dayPeople(day);
   $('day-cups').innerHTML = '<div class="empty">Loading…</div>';
   $('day-range').value = SLIDER.preset;
   $('day-value').textContent = SLIDER.preset;
@@ -318,6 +389,68 @@ $('day-cups').addEventListener('click', async (e) => {
 const closeDay = () => { $('day-sheet').hidden = true; dayOpen = null; };
 $('day-close').addEventListener('click', closeDay);
 $('day-sheet').addEventListener('click', (e) => { if (e.target === $('day-sheet')) closeDay(); });
+
+// ------------------------------------------------------------- one cup
+$('feed').addEventListener('click', (e) => {
+  const el = e.target.closest('.cup');
+  if (!el) return;
+  const drink = ((board && board.feed) || []).find((d) => String(d.id) === el.dataset.id);
+  if (!drink) return;
+  if (drink.user_id !== me.id) { toast(`That is ${drink.name}'s cup.`); return; }
+  openCup(drink);
+});
+
+function openCup(d) {
+  cupOpen = d;
+  $('cup-error').textContent = '';
+  $('cup-title').textContent = fmtDayLong(d.day);
+  $('cup-amount').textContent = `${d.ml} ml`;
+  $('cup-sub').textContent = `Logged at ${fmtTime(d.created_at)}. Slide to change it.`;
+  $('cup-img').hidden = !d.photo_id;
+  if (d.photo_id) $('cup-img').src = `/api/photo/${d.photo_id}`;
+  $('cup-range').value = snap(d.ml);
+  $('cup-value').textContent = d.ml;
+  $('cup-sheet').hidden = false;
+}
+
+$('cup-range').addEventListener('input', (e) => { $('cup-value').textContent = e.target.value; });
+$('cup-range').addEventListener('change', async (e) => {
+  if (!cupOpen) return;
+  $('cup-error').textContent = '';
+  try {
+    const { drink } = await api('PATCH', `/api/drinks/${cupOpen.id}`, { ml: Number(e.target.value) });
+    cupOpen = { ...cupOpen, ...drink };
+    $('cup-amount').textContent = `${drink.ml} ml`;
+    if (lastLogged && String(lastLogged.id) === String(drink.id)) {
+      lastLogged = { ...lastLogged, ...drink };
+      $('logged-title').textContent = `${drink.ml} ml logged`;
+      $('logged-range').value = snap(drink.ml);
+      $('logged-value').textContent = drink.ml;
+    }
+    if (dayOpen === drink.day) await loadDay();
+    refresh();
+  } catch (err) { $('cup-error').textContent = err.message; }
+});
+
+$('cup-delete').addEventListener('click', async () => {
+  if (!cupOpen) return;
+  const btn = $('cup-delete'); btn.disabled = true; $('cup-error').textContent = '';
+  const gone = cupOpen;
+  try {
+    await api('DELETE', `/api/drinks/${gone.id}`);
+    if (lastLogged && String(lastLogged.id) === String(gone.id)) { $('logged').hidden = true; lastLogged = null; }
+    closeCup();
+    toast('Removed');
+    if (dayOpen === gone.day) await loadDay();
+    refresh();
+  } catch (err) { $('cup-error').textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+
+const closeCup = () => { $('cup-sheet').hidden = true; cupOpen = null; };
+$('cup-close').addEventListener('click', closeCup);
+$('cup-done').addEventListener('click', closeCup);
+$('cup-sheet').addEventListener('click', (e) => { if (e.target === $('cup-sheet')) closeCup(); });
 
 // ------------------------------------------------------------- settings
 $('settings-btn').addEventListener('click', () => {

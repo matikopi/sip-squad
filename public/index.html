@@ -100,15 +100,22 @@
     <ol class="board" id="board"></ol>
   </div>
 
-  <!-- Your days, shown for any range other than today -->
+  <!-- Day by day, as a bar chart. Hidden on the Today range. -->
   <div class="card" id="days-card" hidden>
-    <h2>Your days</h2>
-    <p class="tiny muted">Tap a day to add or fix cups.</p>
-    <div class="days" id="days"></div>
+    <div class="card-head">
+      <h2>Day by day</h2>
+    </div>
+    <div class="tabs two" id="who-tabs">
+      <button data-who="me" class="active">Just me</button>
+      <button data-who="all">Everyone</button>
+    </div>
+    <div class="chart" id="chart"></div>
+    <p class="tiny muted" id="chart-note"></p>
   </div>
 
   <div class="card">
     <h2>Recent cups</h2>
+    <p class="tiny muted">Tap one of yours to change or delete it.</p>
     <div class="feed" id="feed"></div>
   </div>
 
@@ -123,6 +130,7 @@
       <button class="icon-btn" id="day-close" aria-label="Close">✕</button>
     </div>
     <p class="tiny muted" id="day-total"></p>
+    <p class="tiny muted" id="day-people"></p>
     <div class="cups" id="day-cups"></div>
 
     <div class="slider">
@@ -133,6 +141,36 @@
     </div>
     <button class="btn" id="day-add">Add a cup to this day</button>
     <p class="error" id="day-error"></p>
+  </div>
+</div>
+
+<!-- Editing one cup, opened from Recent cups -->
+<div class="sheet" id="cup-sheet" hidden>
+  <div class="sheet-body">
+    <div class="sheet-head">
+      <h2 id="cup-title">Cup</h2>
+      <button class="icon-btn" id="cup-close" aria-label="Close">✕</button>
+    </div>
+    <div class="logged-head">
+      <img id="cup-img" alt="" hidden>
+      <div class="logged-text">
+        <div class="logged-title" id="cup-amount"></div>
+        <div class="tiny muted" id="cup-sub"></div>
+      </div>
+    </div>
+
+    <div class="slider">
+      <div class="slider-value"><span id="cup-value">350</span><small>ml</small></div>
+      <input type="range" id="cup-range" min="150" max="500" step="50" value="350"
+        aria-label="Amount in millilitres">
+      <div class="slider-ends"><span>150</span><span>500</span></div>
+    </div>
+
+    <div class="row">
+      <button class="btn ghost small danger" id="cup-delete">Delete</button>
+      <button class="btn small" id="cup-done">Done</button>
+    </div>
+    <p class="error" id="cup-error"></p>
   </div>
 </div>
 
@@ -150,6 +188,7 @@
     </label>
     <label>Daily goal (ml)
       <input id="set-goal" type="number" min="250" max="10000" step="50" inputmode="numeric">
+      <span class="tiny muted">The dashed line on the chart.</span>
     </label>
     <p class="tiny muted">Streak 🔥 counts days in a row you hit your goal.</p>
 

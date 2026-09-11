@@ -179,6 +179,19 @@ try {
   // an unknown range falls back to today rather than erroring
   assert.equal((await call('GET', '/api/board?range=nonsense', null, a.data.token)).data.range, 'today');
 
+  // ---- the bars behind the day-by-day chart: one row per person per day
+  const aId = a.data.user.id, bId = b.data.user.id;
+  const bar = (rows, id, day) => rows.find((r) => r.user_id === id && r.day === day);
+  const chart = await call('GET', `/api/board?range=all&day=${TODAY}`, null, a.data.token);
+  assert.deepEqual([bar(chart.data.days, aId, TODAY).ml, bar(chart.data.days, aId, TODAY).cups], [750, 1],
+    'my own bar for today');
+  assert.equal(bar(chart.data.days, bId, TODAY).ml, 500, 'a friend gets their own bar on the same day');
+  assert.equal(bar(chart.data.days, bId, LAST_WEEK).ml, 350, 'and on earlier days');
+  assert.ok(chart.data.days.every((r) => r.day && r.user_id && r.ml > 0 && r.cups > 0),
+    'every bar carries a day, a person and a real total');
+  const todayBars = (await call('GET', `/api/board?range=today&day=${TODAY}`, null, a.data.token)).data.days;
+  assert.ok(todayBars.length && todayBars.every((r) => r.day === TODAY), 'the today range carries only today');
+
   // ---- editing an earlier day
   const dayView = await call('GET', `/api/day?day=${LAST_WEEK}`, null, b.data.token);
   assert.equal(dayView.status, 200);

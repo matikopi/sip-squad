@@ -19,9 +19,18 @@ through the small link under the button, and photo-less cups show as a plain
 tile in the feed.
 
 The leaderboard has four ranges: Today, Week, Month and All. On anything but
-Today, a "Your days" list appears underneath with a row per day. Tap a day to
-see its cups, add one with the slider, or remove one. Cups can be logged for
-today and any earlier day within a year, never the future.
+Today, a **Day by day** chart appears underneath: one vertical bar per day,
+green when the goal was met and blue when it was not, with a dashed line at
+your goal. Switch it between **Just me** and **Everyone**; in Everyone mode
+each day shows one bar per person, always in the same left-to-right order, and
+your own bar is the solid one. Ranges longer than the screen scroll sideways
+and open on the most recent day. Tap any day to see its cups, add one with the
+slider, or remove one. Cups can be logged for today and any earlier day within
+a year, never the future.
+
+Tapping one of your own cups in **Recent cups** opens the same slider, so an
+amount can be fixed or the cup deleted long after it was logged. Someone
+else's cup is not editable.
 
 Everyone shares one board, so there is no group code. Typing the same name
 again gets you the same account, from any device.
@@ -149,6 +158,7 @@ sql/004_push.sql Push subscriptions per device.
 sql/005_...sql   One shared board and name-only sign-in.
 sql/006_...sql   Optional photo, and notifying the group on every cup.
 sql/007_...sql   Month range, per-day history, editing earlier days.
+sql/008_...sql   Per-person daily totals behind the day-by-day chart.
 lib/telegram.js  Telegram bot messages and webhook helpers.
 lib/sms.js       Twilio client and the two text bodies.
 lib/push.js      Web push: aes128gcm payload encryption and VAPID signing.
@@ -223,7 +233,7 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 | GET / PATCH | `/api/me` | Read or change `cup_ml`, `goal_ml` |
 | POST | `/api/drinks` | `{day: YYYY-MM-DD, ml?, photo?}` -> `{drink}` |
 | PATCH / DELETE | `/api/drinks/:id` | Fix the amount or remove (own cups only) |
-| GET | `/api/board?range=today\|week\|month\|all&day=YYYY-MM-DD` | Leaderboard, feed, your daily totals |
+| GET | `/api/board?range=today\|week\|month\|all&day=YYYY-MM-DD` | Leaderboard, feed, and daily totals per person |
 | GET | `/api/day?day=YYYY-MM-DD` | Your cups on one day |
 | GET | `/api/photo/:id` | A cup photo |
 | POST | `/api/telegram` | Telegram webhook (`/link <code>`, `/board`, `/unlink`) |
@@ -248,6 +258,7 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Monday.
 - A photo is optional.
 - One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.
+- A bar is green when that person met their own goal; the dashed line is yours.
 - Daily goal defaults to 2000 ml, per person. The ring turns green when hit.
 - Photos are kept forever and visible to everyone in the group.
 - Units are ml.
