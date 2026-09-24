@@ -7,12 +7,27 @@ const store = {
   set who(v) { try { localStorage.setItem('who', v); } catch {} },
 };
 
-// The slider covers ordinary cups. Anything unusual is still possible by
-// changing your usual cup size in settings.
-const SLIDER = { min: 150, max: 500, step: 50, preset: 350 };
-const snap = (ml) => Math.min(SLIDER.max, Math.max(SLIDER.min, Math.round(ml / SLIDER.step) * SLIDER.step));
+// The sizes you can pick, plus your own usual cup if it is not one of them.
+// Anything else means changing your usual cup size in settings.
+const SIZES = [150, 200, 250, 300, 350, 400, 450, 500];
+const sizes = () => (SIZES.includes(me.cup_ml) ? SIZES : [...SIZES, me.cup_ml].sort((a, b) => a - b));
+const nearest = (ml) => sizes().reduce((best, s) => (Math.abs(s - ml) < Math.abs(best - ml) ? s : best));
 
-let me = null, range = 'today', lastLogged = null, pollTimer = null;
+// One picker of chips, used for logging, editing a cup and filling an old day.
+function drawPicker(id, selected) {
+  $(id).innerHTML = sizes().map((ml) => `
+    <button class="chip${ml === selected ? ' on' : ''}" data-ml="${ml}">${ml}<small>ml</small></button>`).join('');
+}
+function onPick(id, handler) {
+  $(id).addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    [...$(id).children].forEach((c) => c.classList.toggle('on', c === chip));
+    handler(Number(chip.dataset.ml));
+  });
+}
+
+let me = null, range = 'today', pollTimer = null;
 let board = null, dayOpen = null, cupOpen = null;
 let whoMode = store.who;
 
@@ -233,30 +248,54 @@ $('who-tabs').addEventListener('click', (e) => {
 });
 
 // ------------------------------------------------------------- log a cup
+// Tapping the button opens the picker. Nothing reaches the board until Add.
+let logMl = 350, logPhoto = null;
+
 function hint() {
-  $('tap-hint').textContent = `One tap counts as ${me.cup_ml} ml. Slide to correct it after.`;
+  $('tap-hint').textContent = `Pick the size, then add it. Yours is usually ${me.cup_ml} ml.`;
 }
 
-async function logCup(photo) {
-  const btn = $('log-cup');
-  btn.classList.add('busy');
-  $('tap-hint').textContent = photo && me.ai ? 'Looking at your cup…' : 'Saving…';
+function openLog(photo) {
+  logPhoto = photo || null;
+  logMl = nearest(me.cup_ml);
+  $('log-error').textContent = '';
+  $('log-sub').textContent = logPhoto ? 'Pick a size for this cup, then add it.' : 'Pick a size, then add it.';
+  $('log-img').hidden = !logPhoto;
+  if (logPhoto) $('log-img').src = logPhoto;
+  drawPicker('log-picker', logMl);
+  $('log-add').textContent = `Add ${logMl} ml`;
+  $('log-add').disabled = false;
+  $('log-sheet').hidden = false;
+}
+
+onPick('log-picker', (ml) => { logMl = ml; $('log-add').textContent = `Add ${ml} ml`; });
+
+$('log-cup').addEventListener('click', () => openLog(null));
+
+$('log-add').addEventListener('click', async () => {
+  const btn = $('log-add');
+  btn.disabled = true; btn.textContent = 'Adding…'; $('log-error').textContent = '';
   try {
-    const { drink } = await api('POST', '/api/drinks', { photo, day: localDay() });
-    showLogged(drink, photo);
+    const { drink } = await api('POST', '/api/drinks', { photo: logPhoto, day: localDay(), ml: logMl });
+    closeLog();
     toast(`+${drink.ml} ml 💧`);
     refresh();
-  } catch (err) { toast(err.message, 4000); }
-  finally { btn.classList.remove('busy'); hint(); }
-}
+  } catch (err) {
+    $('log-error').textContent = err.message;
+    btn.disabled = false; btn.textContent = `Add ${logMl} ml`;
+  }
+});
 
-$('log-cup').addEventListener('click', () => logCup(null));
+const closeLog = () => { $('log-sheet').hidden = true; logPhoto = null; };
+$('log-close').addEventListener('click', closeLog);
+$('log-sheet').addEventListener('click', (e) => { if (e.target === $('log-sheet')) closeLog(); });
 
+// A photo goes through the same picker, so it is still one confirmation.
 $('photo-input').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  try { await logCup(await shrink(file)); }
+  try { openLog(await shrink(file)); }
   catch (err) { toast(err.message, 4000); }
 });
 
@@ -277,41 +316,6 @@ function shrink(file, max = 800) {
     img.src = url;
   });
 }
-
-function showLogged(drink, photoUrl) {
-  lastLogged = drink;
-  $('logged').hidden = false;
-  $('logged-img').hidden = !photoUrl;
-  if (photoUrl) $('logged-img').src = photoUrl;
-  const src = { ai: `Looks like ${drink.label || 'a cup'}`, default: 'Your usual cup', manual: 'Set by you' };
-  $('logged-title').textContent = `${drink.ml} ml logged`;
-  $('logged-sub').textContent = `${src[drink.source] || ''}. Slide to change it.`;
-  $('logged-range').value = snap(drink.ml);
-  $('logged-value').textContent = drink.ml;
-  $('logged').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-// Show the number while dragging, save once the finger lifts.
-$('logged-range').addEventListener('input', (e) => { $('logged-value').textContent = e.target.value; });
-$('logged-range').addEventListener('change', async (e) => {
-  if (!lastLogged) return;
-  const ml = Number(e.target.value);
-  try {
-    const { drink } = await api('PATCH', `/api/drinks/${lastLogged.id}`, { ml });
-    lastLogged = { ...lastLogged, ...drink };
-    $('logged-title').textContent = `${drink.ml} ml logged`;
-    $('logged-sub').textContent = 'Set by you. Slide to change it.';
-    refresh();
-  } catch (err) { toast(err.message); }
-});
-
-$('logged-undo').addEventListener('click', async () => {
-  if (!lastLogged) return;
-  try { await api('DELETE', `/api/drinks/${lastLogged.id}`); toast('Removed'); }
-  catch (err) { toast(err.message); }
-  $('logged').hidden = true; lastLogged = null; refresh();
-});
-$('logged-done').addEventListener('click', () => { $('logged').hidden = true; lastLogged = null; });
 
 // ------------------------------------------------------------- ranges
 $('tabs').addEventListener('click', (e) => {
@@ -338,8 +342,9 @@ async function openDay(day) {
   $('day-title').textContent = fmtDayLong(day);
   $('day-people').textContent = dayPeople(day);
   $('day-cups').innerHTML = '<div class="empty">Loading…</div>';
-  $('day-range').value = SLIDER.preset;
-  $('day-value').textContent = SLIDER.preset;
+  dayMl = nearest(me.cup_ml);
+  drawPicker('day-picker', dayMl);
+  $('day-add').textContent = `Add ${dayMl} ml to this day`;
   $('day-sheet').hidden = false;
   await loadDay();
 }
@@ -361,13 +366,14 @@ async function loadDay() {
   } catch (err) { $('day-error').textContent = err.message; }
 }
 
-$('day-range').addEventListener('input', (e) => { $('day-value').textContent = e.target.value; });
+let dayMl = 350;
+onPick('day-picker', (ml) => { dayMl = ml; $('day-add').textContent = `Add ${ml} ml to this day`; });
 
 $('day-add').addEventListener('click', async () => {
   const btn = $('day-add'); btn.disabled = true; $('day-error').textContent = '';
   try {
-    await api('POST', '/api/drinks', { day: dayOpen, ml: Number($('day-range').value) });
-    toast('Added');
+    await api('POST', '/api/drinks', { day: dayOpen, ml: dayMl });
+    toast(`+${dayMl} ml`);
     await loadDay();
     refresh();
   } catch (err) { $('day-error').textContent = err.message; }
@@ -380,7 +386,6 @@ $('day-cups').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try {
     await api('DELETE', `/api/drinks/${id}`);
-    if (lastLogged && String(lastLogged.id) === String(id)) { $('logged').hidden = true; lastLogged = null; }
     await loadDay();
     refresh();
   } catch (err) { $('day-error').textContent = err.message; e.target.disabled = false; }
@@ -400,36 +405,43 @@ $('feed').addEventListener('click', (e) => {
   openCup(drink);
 });
 
+let cupMl = 350;
+
 function openCup(d) {
   cupOpen = d;
+  cupMl = d.ml;
   $('cup-error').textContent = '';
   $('cup-title').textContent = fmtDayLong(d.day);
   $('cup-amount').textContent = `${d.ml} ml`;
-  $('cup-sub').textContent = `Logged at ${fmtTime(d.created_at)}. Slide to change it.`;
+  $('cup-sub').textContent = `Logged at ${fmtTime(d.created_at)}. Pick another size to change it.`;
   $('cup-img').hidden = !d.photo_id;
   if (d.photo_id) $('cup-img').src = `/api/photo/${d.photo_id}`;
-  $('cup-range').value = snap(d.ml);
-  $('cup-value').textContent = d.ml;
+  drawPicker('cup-picker', d.ml);
+  $('cup-save').disabled = false;
   $('cup-sheet').hidden = false;
 }
 
-$('cup-range').addEventListener('input', (e) => { $('cup-value').textContent = e.target.value; });
-$('cup-range').addEventListener('change', async (e) => {
+onPick('cup-picker', (ml) => {
+  cupMl = ml;
+  $('cup-amount').textContent = `${ml} ml`;
+  $('cup-sub').textContent = ml === cupOpen.ml
+    ? `Logged at ${fmtTime(cupOpen.created_at)}. Pick another size to change it.`
+    : `Was ${cupOpen.ml} ml. Nothing changes until you tap Save.`;
+});
+
+// Nothing changes on the board until Save, same as logging.
+$('cup-save').addEventListener('click', async () => {
   if (!cupOpen) return;
-  $('cup-error').textContent = '';
+  if (cupMl === cupOpen.ml) { closeCup(); return; }
+  const btn = $('cup-save'); btn.disabled = true; $('cup-error').textContent = '';
+  const day = cupOpen.day;
   try {
-    const { drink } = await api('PATCH', `/api/drinks/${cupOpen.id}`, { ml: Number(e.target.value) });
-    cupOpen = { ...cupOpen, ...drink };
-    $('cup-amount').textContent = `${drink.ml} ml`;
-    if (lastLogged && String(lastLogged.id) === String(drink.id)) {
-      lastLogged = { ...lastLogged, ...drink };
-      $('logged-title').textContent = `${drink.ml} ml logged`;
-      $('logged-range').value = snap(drink.ml);
-      $('logged-value').textContent = drink.ml;
-    }
-    if (dayOpen === drink.day) await loadDay();
+    await api('PATCH', `/api/drinks/${cupOpen.id}`, { ml: cupMl });
+    closeCup();
+    toast('Changed');
+    if (dayOpen === day) await loadDay();
     refresh();
-  } catch (err) { $('cup-error').textContent = err.message; }
+  } catch (err) { $('cup-error').textContent = err.message; btn.disabled = false; }
 });
 
 $('cup-delete').addEventListener('click', async () => {
@@ -438,7 +450,6 @@ $('cup-delete').addEventListener('click', async () => {
   const gone = cupOpen;
   try {
     await api('DELETE', `/api/drinks/${gone.id}`);
-    if (lastLogged && String(lastLogged.id) === String(gone.id)) { $('logged').hidden = true; lastLogged = null; }
     closeCup();
     toast('Removed');
     if (dayOpen === gone.day) await loadDay();
@@ -449,7 +460,6 @@ $('cup-delete').addEventListener('click', async () => {
 
 const closeCup = () => { $('cup-sheet').hidden = true; cupOpen = null; };
 $('cup-close').addEventListener('click', closeCup);
-$('cup-done').addEventListener('click', closeCup);
 $('cup-sheet').addEventListener('click', (e) => { if (e.target === $('cup-sheet')) closeCup(); });
 
 // ------------------------------------------------------------- settings

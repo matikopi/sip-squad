@@ -62,29 +62,6 @@
     </label>
   </p>
 
-  <!-- The cup just logged, with a slider to correct it -->
-  <div class="card logged" id="logged" hidden>
-    <div class="logged-head">
-      <img id="logged-img" alt="" hidden>
-      <div class="logged-text">
-        <div class="logged-title" id="logged-title"></div>
-        <div class="tiny muted" id="logged-sub"></div>
-      </div>
-    </div>
-
-    <div class="slider">
-      <div class="slider-value"><span id="logged-value">350</span><small>ml</small></div>
-      <input type="range" id="logged-range" min="150" max="500" step="50" value="350"
-        aria-label="Amount in millilitres">
-      <div class="slider-ends"><span>150</span><span>500</span></div>
-    </div>
-
-    <div class="row">
-      <button class="btn ghost small" id="logged-undo">Undo</button>
-      <button class="btn small" id="logged-done">Done</button>
-    </div>
-  </div>
-
   <!-- Leaderboard -->
   <div class="card">
     <div class="card-head">
@@ -122,6 +99,21 @@
   <p class="tiny muted center" id="status"></p>
 </section>
 
+<!-- Picking the amount. Nothing is logged until Add is tapped. -->
+<div class="sheet" id="log-sheet" hidden>
+  <div class="sheet-body">
+    <div class="sheet-head">
+      <h2>How big was it?</h2>
+      <button class="icon-btn" id="log-close" aria-label="Close">✕</button>
+    </div>
+    <p class="tiny muted" id="log-sub">Pick a size, then add it.</p>
+    <img class="shot" id="log-img" alt="" hidden>
+    <div class="picker" id="log-picker"></div>
+    <button class="btn" id="log-add">Add 350 ml</button>
+    <p class="error" id="log-error"></p>
+  </div>
+</div>
+
 <!-- Editing one day -->
 <div class="sheet" id="day-sheet" hidden>
   <div class="sheet-body">
@@ -133,13 +125,8 @@
     <p class="tiny muted" id="day-people"></p>
     <div class="cups" id="day-cups"></div>
 
-    <div class="slider">
-      <div class="slider-value"><span id="day-value">350</span><small>ml</small></div>
-      <input type="range" id="day-range" min="150" max="500" step="50" value="350"
-        aria-label="Amount in millilitres">
-      <div class="slider-ends"><span>150</span><span>500</span></div>
-    </div>
-    <button class="btn" id="day-add">Add a cup to this day</button>
+    <div class="picker" id="day-picker"></div>
+    <button class="btn" id="day-add">Add 350 ml to this day</button>
     <p class="error" id="day-error"></p>
   </div>
 </div>
@@ -159,16 +146,11 @@
       </div>
     </div>
 
-    <div class="slider">
-      <div class="slider-value"><span id="cup-value">350</span><small>ml</small></div>
-      <input type="range" id="cup-range" min="150" max="500" step="50" value="350"
-        aria-label="Amount in millilitres">
-      <div class="slider-ends"><span>150</span><span>500</span></div>
-    </div>
+    <div class="picker" id="cup-picker"></div>
 
     <div class="row">
       <button class="btn ghost small danger" id="cup-delete">Delete</button>
-      <button class="btn small" id="cup-done">Done</button>
+      <button class="btn small" id="cup-save">Save</button>
     </div>
     <p class="error" id="cup-error"></p>
   </div>
@@ -184,7 +166,7 @@
 
     <label>Your usual cup (ml)
       <input id="set-cup" type="number" min="30" max="3000" step="10" inputmode="numeric">
-      <span class="tiny muted">What one tap counts as. Correct a single cup with the slider after logging it.</span>
+      <span class="tiny muted">The size picked for you by default. Any cup can be changed when you log it.</span>
     </label>
     <label>Daily goal (ml)
       <input id="set-goal" type="number" min="250" max="10000" step="50" inputmode="numeric">

@@ -12,11 +12,12 @@ Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 2. Type your name. That is the whole sign-in.
 3. Tap **I finished a cup**. Done, one tap.
 
-A cup counts as your usual cup size, 350 ml unless you change it in settings.
-The card that appears after has a slider, 150 to 500 ml in steps of 50, for
-when a particular cup was bigger or smaller. Adding a photo is optional,
-through the small link under the button, and photo-less cups show as a plain
-tile in the feed.
+Tapping the button opens a size picker: eight sizes from 150 to 500 ml in
+steps of 50, laid out four to a row, with your usual size already selected.
+**Nothing is logged until you tap Add**, and the button says exactly what it
+will add. Adding a photo is optional, through the small link under the button;
+it opens the same picker with the photo attached, and photo-less cups show as
+a plain tile in the feed.
 
 The leaderboard has four ranges: Today, Week, Month and All. On anything but
 Today, a **Day by day** chart appears underneath: one vertical bar per day,
@@ -25,12 +26,12 @@ your goal. Switch it between **Just me** and **Everyone**; in Everyone mode
 each day shows one bar per person, always in the same left-to-right order, and
 your own bar is the solid one. Ranges longer than the screen scroll sideways
 and open on the most recent day. Tap any day to see its cups, add one with the
-slider, or remove one. Cups can be logged for today and any earlier day within
+picker, or remove one. Cups can be logged for today and any earlier day within
 a year, never the future.
 
-Tapping one of your own cups in **Recent cups** opens the same slider, so an
-amount can be fixed or the cup deleted long after it was logged. Someone
-else's cup is not editable.
+Tapping one of your own cups in **Recent cups** opens the same picker, so an
+amount can be fixed or the cup deleted long after it was logged. Picking a
+size there changes nothing until Save. Someone else's cup is not editable.
 
 Everyone shares one board, so there is no group code. Typing the same name
 again gets you the same account, from any device.
@@ -253,9 +254,10 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Sunday.
 
 ## Assumptions (change any of them)
 
-- One tap = one full cup of your usual size. Drank half? Slide it down.
-- The slider covers 150 to 500 ml. Anything unusual means changing your usual
-  cup size in settings, which accepts 30 to 3000 ml.
+- Two taps to log: the button, then the size. Your usual size is preselected.
+- The picker covers 150 to 500 ml, plus your own usual size when it is not one
+  of those. Anything else means changing your usual cup size in settings,
+  which accepts 30 to 3000 ml.
 - A photo is optional.
 - One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.

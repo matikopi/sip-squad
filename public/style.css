@@ -190,37 +190,31 @@ input[type=text], input[type=tel], input[type=number], input:not([type]) {
 .cup .cap b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { color: var(--muted); font-size: 14px; padding: 10px 0; }
 
-/* ---------------------------------------------------------------- logged card */
-.logged { border-color: var(--accent); }
+/* ------------------------------------------------------------- cup details */
 .logged-head { display: flex; gap: 12px; align-items: center; }
 .logged-head img { width: 64px; height: 64px; flex: none; object-fit: cover; border-radius: 12px; }
 .logged-text { min-width: 0; }
 .logged-title { font-weight: 700; font-size: 18px; }
 
-/* ---------------------------------------------------------------- slider */
-.slider { margin-top: 16px; }
-.slider-value { text-align: center; font-size: 34px; font-weight: 800; line-height: 1; }
-.slider-value small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 3px; }
-.slider input[type=range] {
-  -webkit-appearance: none; appearance: none;
-  display: block; width: 100%; margin: 14px 0 0; padding: 0;
-  background: transparent; height: 44px;   /* a comfortable touch target */
+/* ---------------------------------------------------------------- picker */
+/* Sizes sit in an even grid that fills the sheet, four to a row on a phone. */
+.picker {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  gap: 8px; margin: 14px 0 16px;
 }
-.slider input[type=range]::-webkit-slider-runnable-track {
-  height: 8px; border-radius: 4px; background: var(--track);
+.chip {
+  display: flex; align-items: baseline; justify-content: center; gap: 2px;
+  padding: 14px 4px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink);
+  font-family: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
 }
-.slider input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 30px; height: 30px; margin-top: -11px; border-radius: 50%;
-  background: var(--accent); border: 3px solid var(--card);
-  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+.chip small { font-size: 11px; font-weight: 500; color: var(--muted); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip.on small { color: rgba(255, 255, 255, .85); }
+.shot {
+  display: block; width: 96px; height: 96px; object-fit: cover;
+  border-radius: 14px; margin: 12px auto 0;
 }
-.slider input[type=range]::-moz-range-track { height: 8px; border-radius: 4px; background: var(--track); }
-.slider input[type=range]::-moz-range-thumb {
-  width: 24px; height: 24px; border-radius: 50%; background: var(--accent);
-  border: 3px solid var(--card); box-shadow: 0 2px 8px rgba(0,0,0,.25);
-}
-.slider-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: -4px; }
 
 /* ---------------------------------------------------------------- day sheet */
 .cups { margin: 12px 0 4px; }
@@ -257,7 +251,8 @@ input[type=text], input[type=tel], input[type=number], input:not([type]) {
 
 /* ---------------------------------------------------------------- toast */
 .toast {
-  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom));
+  /* Top, not bottom: a sheet's buttons live at the bottom of the screen. */
+  position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top));
   transform: translateX(-50%); z-index: 30;
   max-width: calc(100vw - 32px);
   background: var(--ink); color: var(--bg);
