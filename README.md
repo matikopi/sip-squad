@@ -10,14 +10,15 @@ Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 
 1. Open the app URL on your phone.
 2. Type your name. That is the whole sign-in.
-3. Tap **I finished a cup**. Done, one tap.
+3. Tap **150**, **250**, **350** or **450** in Quick add. Done, one tap.
 
-Tapping the button opens a size picker: eight sizes from 150 to 500 ml in
-steps of 50, laid out four to a row, with your usual size already selected.
-**Nothing is logged until you tap Add**, and the button says exactly what it
-will add. Adding a photo is optional, through the small link under the button;
-it opens the same picker with the photo attached, and photo-less cups show as
-a plain tile in the feed.
+Quick add is the first thing on the screen. The four sizes log straight away:
+tapping the number you meant is the confirmation. **Custom** sits next to them
+and opens a field to type any amount from 30 to 3000 ml; a confirm button
+naming the amount appears under the field once what you typed is usable, and
+nothing is logged until you tap it (Enter works too). Adding a photo is
+optional, through the small link under the ring; it opens a sheet with the
+sizes to pick from, and photo-less cups show as a plain tile in the feed.
 
 The leaderboard has four ranges: Today, Week, Month and All. On anything but
 Today, a **Day by day** chart appears underneath: one vertical bar per day,
@@ -254,10 +255,10 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Sunday.
 
 ## Assumptions (change any of them)
 
-- Two taps to log: the button, then the size. Your usual size is preselected.
-- The picker covers 150 to 500 ml, plus your own usual size when it is not one
-  of those. Anything else means changing your usual cup size in settings,
-  which accepts 30 to 3000 ml.
+- One tap logs a cup: Quick add carries 150, 250, 350 and 450 ml.
+- Custom accepts 30 to 3000 ml and asks you to confirm, since a typed number
+  is easy to fat-finger.
+- Your usual cup size in settings is what a photo-logged cup starts at.
 - A photo is optional.
 - One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.

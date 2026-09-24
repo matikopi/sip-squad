@@ -90,7 +90,6 @@ function enterHome() {
   [...$('who-tabs').children].forEach((x) => x.classList.toggle('active', x.dataset.who === whoMode));
   $('who').textContent = me.name;
   $('goal-ml').textContent = me.goal_ml;
-  hint();
   refresh();
   clearInterval(pollTimer);
   pollTimer = setInterval(refresh, 30000);
@@ -247,50 +246,101 @@ $('who-tabs').addEventListener('click', (e) => {
   if (board) renderChart(board);
 });
 
-// ------------------------------------------------------------- log a cup
-// Tapping the button opens the picker. Nothing reaches the board until Add.
-let logMl = 350, logPhoto = null;
+// ------------------------------------------------------------- quick add
+// The four sizes log straight away: tapping the number you meant is the
+// confirmation. Anything else goes through Custom, which asks you to confirm.
+let adding = false;
 
-function hint() {
-  $('tap-hint').textContent = `Pick the size, then add it. Yours is usually ${me.cup_ml} ml.`;
+async function addCup(ml, photo) {
+  if (adding) return null;
+  adding = true;
+  $('quick-error').textContent = '';
+  try {
+    const { drink } = await api('POST', '/api/drinks', { photo: photo || null, day: localDay(), ml });
+    toast(`+${drink.ml} ml 💧`);
+    refresh();
+    return drink;
+  } catch (err) {
+    $('quick-error').textContent = err.message;
+    return null;
+  } finally { adding = false; }
 }
+
+$('quick').addEventListener('click', (e) => {
+  const b = e.target.closest('.qbtn');
+  if (!b) return;
+  if (b.id === 'quick-custom') { showCustom($('custom-wrap').hidden); return; }
+  b.classList.add('on');
+  setTimeout(() => b.classList.remove('on'), 350);
+  addCup(Number(b.dataset.ml));
+});
+
+function showCustom(open) {
+  $('custom-wrap').hidden = !open;
+  $('quick-custom').classList.toggle('on', open);
+  $('custom-ml').value = '';
+  customTyped();
+  if (open) $('custom-ml').focus();
+}
+
+// The confirm button only exists once there is a sensible number to add.
+function customTyped() {
+  const typed = $('custom-ml').value.trim();
+  const ml = Math.round(Number(typed));
+  const ok = typed !== '' && Number.isFinite(ml) && ml >= 30 && ml <= 3000;
+  $('custom-add').hidden = !ok;
+  if (ok) $('custom-add').textContent = `Add ${ml} ml`;
+  $('custom-hint').textContent = typed !== '' && !ok ? 'Anything from 30 to 3000 ml.' : '';
+}
+
+$('custom-ml').addEventListener('input', customTyped);
+$('custom-ml').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); $('custom-add').click(); }
+});
+
+$('custom-add').addEventListener('click', async () => {
+  const ml = Math.round(Number($('custom-ml').value));
+  if (!(ml >= 30 && ml <= 3000)) return;
+  const btn = $('custom-add');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  const drink = await addCup(ml);
+  btn.disabled = false;
+  if (drink) showCustom(false); else customTyped();
+});
+
+// ------------------------------------------------------------- photo
+// A photo still goes through the picker sheet, so its size is set before the
+// cup is logged.
+let logMl = 350, logPhoto = null;
 
 function openLog(photo) {
   logPhoto = photo || null;
   logMl = nearest(me.cup_ml);
   $('log-error').textContent = '';
-  $('log-sub').textContent = logPhoto ? 'Pick a size for this cup, then add it.' : 'Pick a size, then add it.';
-  $('log-img').hidden = !logPhoto;
-  if (logPhoto) $('log-img').src = logPhoto;
   drawPicker('log-picker', logMl);
   $('log-add').textContent = `Add ${logMl} ml`;
   $('log-add').disabled = false;
+  $('log-img').hidden = !logPhoto;
+  if (logPhoto) $('log-img').src = logPhoto;
   $('log-sheet').hidden = false;
 }
 
 onPick('log-picker', (ml) => { logMl = ml; $('log-add').textContent = `Add ${ml} ml`; });
 
-$('log-cup').addEventListener('click', () => openLog(null));
-
 $('log-add').addEventListener('click', async () => {
   const btn = $('log-add');
   btn.disabled = true; btn.textContent = 'Adding…'; $('log-error').textContent = '';
-  try {
-    const { drink } = await api('POST', '/api/drinks', { photo: logPhoto, day: localDay(), ml: logMl });
-    closeLog();
-    toast(`+${drink.ml} ml 💧`);
-    refresh();
-  } catch (err) {
-    $('log-error').textContent = err.message;
-    btn.disabled = false; btn.textContent = `Add ${logMl} ml`;
-  }
+  const drink = await addCup(logMl, logPhoto);
+  if (drink) { closeLog(); return; }
+  $('log-error').textContent = $('quick-error').textContent;
+  $('quick-error').textContent = '';
+  btn.disabled = false; btn.textContent = `Add ${logMl} ml`;
 });
 
 const closeLog = () => { $('log-sheet').hidden = true; logPhoto = null; };
 $('log-close').addEventListener('click', closeLog);
 $('log-sheet').addEventListener('click', (e) => { if (e.target === $('log-sheet')) closeLog(); });
 
-// A photo goes through the same picker, so it is still one confirmation.
 $('photo-input').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
@@ -483,7 +533,7 @@ $('set-save').addEventListener('click', async () => {
     const { user } = await api('PATCH', '/api/me', { cup_ml: $('set-cup').value, goal_ml: $('set-goal').value });
     me = user;
     $('goal-ml').textContent = me.goal_ml;
-    closeSettings(); hint(); toast('Saved'); refresh();
+    closeSettings(); toast('Saved'); refresh();
   } catch (err) { toast(err.message); }
 });
 

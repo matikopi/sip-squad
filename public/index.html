@@ -41,6 +41,25 @@
     <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙️</button>
   </header>
 
+  <!-- Quick add, first thing on the screen: one tap logs that amount -->
+  <div class="card quick">
+    <div class="card-head"><h2>Quick add</h2></div>
+    <div class="quick-row" id="quick">
+      <button class="qbtn" data-ml="150">150<small>ml</small></button>
+      <button class="qbtn" data-ml="250">250<small>ml</small></button>
+      <button class="qbtn" data-ml="350">350<small>ml</small></button>
+      <button class="qbtn" data-ml="450">450<small>ml</small></button>
+      <button class="qbtn custom" id="quick-custom">Custom</button>
+    </div>
+    <div id="custom-wrap" hidden>
+      <input id="custom-ml" type="number" inputmode="numeric" min="30" max="3000" step="10"
+        placeholder="Type an amount in ml" aria-label="Custom amount in millilitres">
+      <button class="btn" id="custom-add" hidden>Add</button>
+      <p class="tiny muted" id="custom-hint"></p>
+    </div>
+    <p class="error" id="quick-error"></p>
+  </div>
+
   <div class="hero">
     <div class="ring" id="ring" style="--p:0">
       <div class="ring-inner">
@@ -51,11 +70,6 @@
     </div>
   </div>
 
-  <button class="btn tap" id="log-cup">
-    <span class="drop">💧</span>
-    <span>I finished a cup</span>
-  </button>
-  <p class="tiny muted center" id="tap-hint"></p>
   <p class="center">
     <label class="link" for="photo-input">or add a photo of the cup
       <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
