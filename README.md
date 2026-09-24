@@ -164,6 +164,7 @@ sql/006_...sql   Optional photo, and notifying the group on every cup.
 sql/007_...sql   Month range, per-day history, editing earlier days.
 sql/008_...sql   Per-person daily totals behind the day-by-day chart.
 sql/009_...sql   Weeks start on Sunday.
+sql/010_...sql   One-off: files already-logged small-hours cups under the night before.
 lib/telegram.js  Telegram bot messages and webhook helpers.
 lib/sms.js       Twilio client and the two text bodies.
 lib/push.js      Web push: aes128gcm payload encryption and VAPID signing.
@@ -251,8 +252,12 @@ All JSON. Auth is the `sip` cookie set by `/api/join`, or an `x-token` header.
 | POST | `/api/push/unsubscribe` | Removes this device |
 | POST | `/api/push/test` | Sends a test notification to your devices |
 
-Days are counted in each person's local time (the phone sends its local date),
-so a cup at 11:30 pm counts for that person's today. Weeks start Sunday.
+Days are counted in each person's local time (the phone sends its local date)
+and **run 4am to 4am**: a glass at 1am belongs to the night before, not to a
+day nobody has woken into yet. The boundary is one constant, `DAY_STARTS_AT`
+in `public/app.js`; the server stores whatever day the app sends and every
+total, streak and chart column groups by that stored day, so moving the
+constant moves the boundary everywhere. Weeks start Sunday.
 
 ## Assumptions (change any of them)
 
@@ -262,6 +267,7 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Sunday.
 - Your usual cup size in settings is what a past-day cup starts at.
 - One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.
+- A day runs 4am to 4am, in each person's own timezone.
 - A bar is green when that person met their own goal; the dashed line is yours.
 - Daily goal defaults to 2000 ml, per person. The ring turns green when hit.
 - Photos are kept forever and visible to everyone in the group.

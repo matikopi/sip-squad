@@ -31,10 +31,16 @@ let me = null, range = 'today', pollTimer = null;
 let board = null, dayOpen = null, cupOpen = null;
 let whoMode = store.who;
 
-// Local calendar day, so a cup at 11pm counts for today in YOUR timezone.
+// A drinking day runs 4am to 4am in YOUR timezone. A glass at 1am belongs to
+// the night before, not to a day you have not woken up into yet. Everything
+// downstream (the ring, the board, the chart, the labels) reads the day from
+// here, and the server stores whatever day the app sends, so this one constant
+// moves the boundary everywhere.
+const DAY_STARTS_AT = 4;
 const localDay = (d = new Date()) => {
+  const x = new Date(d.getTime() - DAY_STARTS_AT * 3600 * 1000);
   const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
 };
 const dayShift = (iso, days) => {
   const d = new Date(iso + 'T12:00:00');
