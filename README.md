@@ -10,11 +10,13 @@ Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 
 1. Open the app URL on your phone.
 2. Type your name. That is the whole sign-in.
-3. Tap **150**, **250**, **350** or **450** in Quick add. Done, one tap.
+3. Tap **I drank a cup**, then the size. Two taps, no typing.
 
-"Add your drink below" is the first thing on the screen. The four sizes log
-straight away: tapping the number you meant is the confirmation. **Custom**
-sits next to them and opens a field to type any amount from 30 to 3000 ml; a
+The button sits under the ring. Tapping it opens the sizes right below it:
+**150**, **250**, **350**, **450**. Tapping one logs it and folds them away
+again, since tapping the number you meant is the confirmation; tapping the
+button a second time closes them without logging anything. **Custom** sits at
+the end of the row and opens a field to type any amount from 30 to 3000 ml; a
 confirm button naming the amount appears under the field once what you typed
 is usable, and nothing is logged until you tap it (Enter works too).
 
@@ -261,7 +263,8 @@ constant moves the boundary everywhere. Weeks start Sunday.
 
 ## Assumptions (change any of them)
 
-- One tap logs a cup: Quick add carries 150, 250, 350 and 450 ml.
+- The sizes are 150, 250, 350 and 450 ml, behind the button until you say you
+  drank something.
 - Custom accepts 30 to 3000 ml and asks you to confirm, since a typed number
   is easy to fat-finger.
 - Your usual cup size in settings is what a past-day cup starts at.
