@@ -251,12 +251,12 @@ $('who-tabs').addEventListener('click', (e) => {
 // confirmation. Anything else goes through Custom, which asks you to confirm.
 let adding = false;
 
-async function addCup(ml, photo) {
+async function addCup(ml) {
   if (adding) return null;
   adding = true;
   $('quick-error').textContent = '';
   try {
-    const { drink } = await api('POST', '/api/drinks', { photo: photo || null, day: localDay(), ml });
+    const { drink } = await api('POST', '/api/drinks', { day: localDay(), ml });
     toast(`+${drink.ml} ml 💧`);
     refresh();
     return drink;
@@ -307,65 +307,6 @@ $('custom-add').addEventListener('click', async () => {
   btn.disabled = false;
   if (drink) showCustom(false); else customTyped();
 });
-
-// ------------------------------------------------------------- photo
-// A photo still goes through the picker sheet, so its size is set before the
-// cup is logged.
-let logMl = 350, logPhoto = null;
-
-function openLog(photo) {
-  logPhoto = photo || null;
-  logMl = nearest(me.cup_ml);
-  $('log-error').textContent = '';
-  drawPicker('log-picker', logMl);
-  $('log-add').textContent = `Add ${logMl} ml`;
-  $('log-add').disabled = false;
-  $('log-img').hidden = !logPhoto;
-  if (logPhoto) $('log-img').src = logPhoto;
-  $('log-sheet').hidden = false;
-}
-
-onPick('log-picker', (ml) => { logMl = ml; $('log-add').textContent = `Add ${ml} ml`; });
-
-$('log-add').addEventListener('click', async () => {
-  const btn = $('log-add');
-  btn.disabled = true; btn.textContent = 'Adding…'; $('log-error').textContent = '';
-  const drink = await addCup(logMl, logPhoto);
-  if (drink) { closeLog(); return; }
-  $('log-error').textContent = $('quick-error').textContent;
-  $('quick-error').textContent = '';
-  btn.disabled = false; btn.textContent = `Add ${logMl} ml`;
-});
-
-const closeLog = () => { $('log-sheet').hidden = true; logPhoto = null; };
-$('log-close').addEventListener('click', closeLog);
-$('log-sheet').addEventListener('click', (e) => { if (e.target === $('log-sheet')) closeLog(); });
-
-$('photo-input').addEventListener('change', async (e) => {
-  const file = e.target.files && e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  try { openLog(await shrink(file)); }
-  catch (err) { toast(err.message, 4000); }
-});
-
-// Downscale on-device so uploads are ~100 KB instead of ~4 MB phone photos.
-function shrink(file, max = 800) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const s = Math.min(1, max / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      resolve(c.toDataURL('image/jpeg', 0.75));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that photo')); };
-    img.src = url;
-  });
-}
 
 // ------------------------------------------------------------- ranges
 $('tabs').addEventListener('click', (e) => {

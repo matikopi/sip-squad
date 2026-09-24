@@ -1,8 +1,8 @@
 # Sip Squad 💧
 
-Finish a cup of water, snap a photo of the empty cup, and it gets logged with
-the time and an approximate amount. Friends who join with the same group code
-share a leaderboard (today, this week, all time) and a feed of everyone's cups.
+Finish a drink, tap its size, and it is logged with the time and the amount.
+Everyone who signs in shares one leaderboard (today, this week, this month,
+all time), a day-by-day chart and a feed of everyone's cups.
 
 Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 
@@ -12,13 +12,15 @@ Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 2. Type your name. That is the whole sign-in.
 3. Tap **150**, **250**, **350** or **450** in Quick add. Done, one tap.
 
-Quick add is the first thing on the screen. The four sizes log straight away:
-tapping the number you meant is the confirmation. **Custom** sits next to them
-and opens a field to type any amount from 30 to 3000 ml; a confirm button
-naming the amount appears under the field once what you typed is usable, and
-nothing is logged until you tap it (Enter works too). Adding a photo is
-optional, through the small link under the ring; it opens a sheet with the
-sizes to pick from, and photo-less cups show as a plain tile in the feed.
+"Add your drink below" is the first thing on the screen. The four sizes log
+straight away: tapping the number you meant is the confirmation. **Custom**
+sits next to them and opens a field to type any amount from 30 to 3000 ml; a
+confirm button naming the amount appears under the field once what you typed
+is usable, and nothing is logged until you tap it (Enter works too).
+
+There is no camera step. The API still accepts a photo and still serves the
+ones logged back when it did, so old cups keep their picture in the feed, but
+the app no longer offers to take one.
 
 The leaderboard has four ranges: Today, Week, Month and All. On anything but
 Today, a **Day by day** chart appears underneath: one vertical bar per day,
@@ -56,14 +58,14 @@ full-screen with its own icon.
 
 ## How amounts work
 
-The amount comes from, in order:
+Every amount is one you picked: a Quick add size, a number typed into Custom,
+or a size chosen when fixing a cup or filling in an earlier day. Your **usual
+cup size** in settings (350 ml by default) is the one preselected when you
+open an earlier day.
 
-1. A size you picked yourself (tap a chip on the card that appears after logging).
-2. **AI estimate**, only when you attached a photo and `ANTHROPIC_API_KEY` is
-   set on Vercel: the photo goes to Claude, which guesses the vessel's
-   capacity ("looks like a pint glass, 470 ml"). One tap to override.
-3. Your **usual cup size**, which is what a plain tap counts as (350 ml by
-   default).
+The server can still estimate from a photo with Claude when a cup arrives with
+one and `ANTHROPIC_API_KEY` is set on Vercel. Nothing in the app sends photos
+any more, so that path is dormant.
 
 ## Streaks
 
@@ -179,10 +181,9 @@ themselves. That is why the server can use the *publishable* Supabase key
 and no secret is needed anywhere. Supabase's linter flags these functions as
 "security definer callable by anon"; that is the intended design.
 
-Photos are downscaled on the phone (800 px, JPEG) to roughly 60 to 100 KB and
-stored as bytes in Postgres, served back through `/api/photo/:id` with
-immutable caching. At the free tier's 500 MB that is several thousand cups.
-If the group gets serious, move photos to Supabase Storage or Vercel Blob.
+Photos logged before the camera step was removed are still stored as bytes in
+Postgres and served through `/api/photo/:id` with immutable caching, so old
+cups keep their picture in the feed.
 
 ## Local development
 
@@ -258,8 +259,7 @@ so a cup at 11:30 pm counts for that person's today. Weeks start Sunday.
 - One tap logs a cup: Quick add carries 150, 250, 350 and 450 ml.
 - Custom accepts 30 to 3000 ml and asks you to confirm, since a typed number
   is easy to fat-finger.
-- Your usual cup size in settings is what a photo-logged cup starts at.
-- A photo is optional.
+- Your usual cup size in settings is what a past-day cup starts at.
 - One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.
 - A bar is green when that person met their own goal; the dashed line is yours.

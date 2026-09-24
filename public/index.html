@@ -41,9 +41,10 @@
     <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙️</button>
   </header>
 
-  <!-- Quick add, first thing on the screen: one tap logs that amount -->
+  <!-- The whole app, really: one tap logs that amount -->
   <div class="card quick">
-    <div class="card-head"><h2>Quick add</h2></div>
+    <h2>Add your drink below</h2>
+    <p class="tiny muted">One tap and it's on the board.</p>
     <div class="quick-row" id="quick">
       <button class="qbtn" data-ml="150">150<small>ml</small></button>
       <button class="qbtn" data-ml="250">250<small>ml</small></button>
@@ -69,12 +70,6 @@
       </div>
     </div>
   </div>
-
-  <p class="center">
-    <label class="link" for="photo-input">or add a photo of the cup
-      <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
-    </label>
-  </p>
 
   <!-- Leaderboard -->
   <div class="card">
@@ -112,21 +107,6 @@
 
   <p class="tiny muted center" id="status"></p>
 </section>
-
-<!-- Picking the amount. Nothing is logged until Add is tapped. -->
-<div class="sheet" id="log-sheet" hidden>
-  <div class="sheet-body">
-    <div class="sheet-head">
-      <h2>How big was it?</h2>
-      <button class="icon-btn" id="log-close" aria-label="Close">✕</button>
-    </div>
-    <p class="tiny muted" id="log-sub">Pick a size, then add it.</p>
-    <img class="shot" id="log-img" alt="" hidden>
-    <div class="picker" id="log-picker"></div>
-    <button class="btn" id="log-add">Add 350 ml</button>
-    <p class="error" id="log-error"></p>
-  </div>
-</div>
 
 <!-- Editing one day -->
 <div class="sheet" id="day-sheet" hidden>
