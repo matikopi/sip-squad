@@ -1,6 +1,6 @@
 // Minimal service worker: makes the app installable and lets the shell open
 // offline. API calls always go to the network.
-const CACHE = 'sip-squad-v13';
+const CACHE = 'sip-squad-v14';
 const SHELL = ['/', '/index.html', '/app.js', '/style.css', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (e) => {

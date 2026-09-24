@@ -272,13 +272,25 @@ async function addCup(ml) {
   } finally { adding = false; }
 }
 
-$('quick').addEventListener('click', (e) => {
+// The button under the ring opens the sizes; tapping one logs it and closes
+// them again, so the screen goes back to just the ring and the board.
+function showSizes(open) {
+  $('quick-card').hidden = !open;
+  $('log-cup').classList.toggle('open', open);
+  $('log-cup').setAttribute('aria-expanded', String(open));
+  if (!open) { showCustom(false); $('quick-error').textContent = ''; }
+}
+
+$('log-cup').addEventListener('click', () => showSizes($('quick-card').hidden));
+
+$('quick').addEventListener('click', async (e) => {
   const b = e.target.closest('.qbtn');
   if (!b) return;
   if (b.id === 'quick-custom') { showCustom($('custom-wrap').hidden); return; }
   b.classList.add('on');
   setTimeout(() => b.classList.remove('on'), 350);
-  addCup(Number(b.dataset.ml));
+  const drink = await addCup(Number(b.dataset.ml));
+  if (drink) showSizes(false);
 });
 
 function showCustom(open) {
@@ -311,7 +323,7 @@ $('custom-add').addEventListener('click', async () => {
   btn.disabled = true; btn.textContent = 'Adding…';
   const drink = await addCup(ml);
   btn.disabled = false;
-  if (drink) showCustom(false); else customTyped();
+  if (drink) showSizes(false); else customTyped();
 });
 
 // ------------------------------------------------------------- ranges

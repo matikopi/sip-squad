@@ -83,6 +83,12 @@ input:focus {
 .btn.ghost:active { background: var(--line); }
 .btn.danger { color: #ef4444; }
 .btn.small { width: auto; padding: 11px 16px; font-size: 15px; }
+.btn.tap {
+  padding: 20px 16px; font-size: 19px; border-radius: 20px; margin-top: 2px;
+  box-shadow: 0 12px 28px -12px var(--accent);
+}
+.btn.tap .drop { font-size: 24px; }
+.btn.tap.open { background: var(--accent-dark); box-shadow: none; }
 
 .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 
@@ -196,8 +202,7 @@ input:focus {
 .logged-title { font-weight: 700; font-size: 18px; }
 
 /* ------------------------------------------------------------- quick add */
-.quick { margin-top: 12px; }
-.quick h2 { font-size: 17px; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.quick { margin-top: 10px; border-color: var(--accent); }
 /* Four sizes and Custom on one row, always inside the card. */
 .quick-row { display: grid; grid-template-columns: repeat(4, 1fr) 1.3fr; gap: 6px; margin-top: 10px; }
 .qbtn {

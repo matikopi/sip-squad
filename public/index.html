@@ -41,10 +41,24 @@
     <button class="icon-btn" id="settings-btn" aria-label="Settings">⚙️</button>
   </header>
 
-  <!-- The whole app, really: one tap logs that amount -->
-  <div class="card quick">
-    <h2>Add your drink below</h2>
-    <p class="tiny muted">One tap and it's on the board.</p>
+  <div class="hero">
+    <div class="ring" id="ring" style="--p:0">
+      <div class="ring-inner">
+        <div class="big" id="today-ml">0</div>
+        <div class="tiny muted">of <span id="goal-ml">2000</span> ml today</div>
+        <div class="tiny accent" id="today-cups"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The button opens the sizes right underneath it; one tap on a size logs -->
+  <button class="btn tap" id="log-cup" aria-expanded="false" aria-controls="quick-card">
+    <span class="drop">💧</span>
+    <span>I drank a cup</span>
+  </button>
+
+  <div class="card quick" id="quick-card" hidden>
+    <p class="tiny muted center">How big was it? One tap and it's on the board.</p>
     <div class="quick-row" id="quick">
       <button class="qbtn" data-ml="150">150<small>ml</small></button>
       <button class="qbtn" data-ml="250">250<small>ml</small></button>
@@ -59,16 +73,6 @@
       <p class="tiny muted" id="custom-hint"></p>
     </div>
     <p class="error" id="quick-error"></p>
-  </div>
-
-  <div class="hero">
-    <div class="ring" id="ring" style="--p:0">
-      <div class="ring-inner">
-        <div class="big" id="today-ml">0</div>
-        <div class="tiny muted">of <span id="goal-ml">2000</span> ml today</div>
-        <div class="tiny accent" id="today-cups"></div>
-      </div>
-    </div>
   </div>
 
   <!-- Leaderboard -->
