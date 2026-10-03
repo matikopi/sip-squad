@@ -10,15 +10,12 @@ Runs on Vercel, stores data in Supabase, installs to your phone's home screen.
 
 1. Open the app URL on your phone.
 2. Type your name. That is the whole sign-in.
-3. Tap **I drank a cup**, then the size. Two taps, no typing.
+3. Tap **I drank a cup**. That is it, one tap.
 
-The button sits under the ring. Tapping it opens the sizes right below it:
-**150**, **250**, **350**, **450**. Tapping one logs it and folds them away
-again, since tapping the number you meant is the confirmation; tapping the
-button a second time closes them without logging anything. **Custom** sits at
-the end of the row and opens a field to type any amount from 30 to 3000 ml; a
-confirm button naming the amount appears under the field once what you typed
-is usable, and nothing is logged until you tap it (Enter works too).
+The button sits under the ring and logs your usual cup, 250 ml unless you
+change it in settings, with nothing else to answer. Tap it again for the next
+cup. A cup that was not that size is fixed afterwards: tap it in **Recent
+cups** and pick another size, or delete it.
 
 There is no camera step. The API still accepts a photo and still serves the
 ones logged back when it did, so old cups keep their picture in the feed, but
@@ -60,10 +57,10 @@ full-screen with its own icon.
 
 ## How amounts work
 
-Every amount is one you picked: a Quick add size, a number typed into Custom,
-or a size chosen when fixing a cup or filling in an earlier day. Your **usual
-cup size** in settings (350 ml by default) is the one preselected when you
-open an earlier day.
+Your **usual cup size** in settings, 250 ml by default, is what the button
+logs and what an earlier day's picker starts at. Every other amount is one you
+picked yourself, from the sizes offered when you fix a cup or fill in an
+earlier day.
 
 The server can still estimate from a photo with Claude when a cup arrives with
 one and `ANTHROPIC_API_KEY` is set on Vercel. Nothing in the app sends photos
@@ -167,6 +164,7 @@ sql/007_...sql   Month range, per-day history, editing earlier days.
 sql/008_...sql   Per-person daily totals behind the day-by-day chart.
 sql/009_...sql   Weeks start on Sunday.
 sql/010_...sql   One-off: files already-logged small-hours cups under the night before.
+sql/011_...sql   A new sign-in's usual cup starts at 250 ml, what one tap logs.
 lib/telegram.js  Telegram bot messages and webhook helpers.
 lib/sms.js       Twilio client and the two text bodies.
 lib/push.js      Web push: aes128gcm payload encryption and VAPID signing.
@@ -263,11 +261,10 @@ constant moves the boundary everywhere. Weeks start Sunday.
 
 ## Assumptions (change any of them)
 
-- The sizes are 150, 250, 350 and 450 ml, behind the button until you say you
-  drank something.
-- Custom accepts 30 to 3000 ml and asks you to confirm, since a typed number
-  is easy to fat-finger.
-- Your usual cup size in settings is what a past-day cup starts at.
+- One tap logs one cup at your usual size, 250 ml by default. Speed beats
+  precision: a wrong cup is two taps to fix and nobody is auditing this.
+- Correcting a cup offers 150 to 500 ml in steps of 50, plus your own usual
+  size. Settings takes any amount from 30 to 3000 ml.
 - One shared board, and a name is the whole sign-in.
 - Ranking is by ml, not cups.
 - A day runs 4am to 4am, in each person's own timezone.

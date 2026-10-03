@@ -65,10 +65,12 @@ input:focus {
   outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
 }
-/* No spinner on the custom amount: it is typed, not nudged. */
-#custom-ml { -moz-appearance: textfield; appearance: textfield; }
-#custom-ml::-webkit-outer-spin-button,
-#custom-ml::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* No spinners on the settings amounts: they are typed, not nudged. */
+#set-cup, #set-goal { -moz-appearance: textfield; appearance: textfield; }
+#set-cup::-webkit-outer-spin-button, #set-cup::-webkit-inner-spin-button,
+#set-goal::-webkit-outer-spin-button, #set-goal::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
 
 /* ---------------------------------------------------------------- buttons */
 .btn {
@@ -88,7 +90,7 @@ input:focus {
   box-shadow: 0 12px 28px -12px var(--accent);
 }
 .btn.tap .drop { font-size: 24px; }
-.btn.tap.open { background: var(--accent-dark); box-shadow: none; }
+.btn.tap.busy { opacity: .6; pointer-events: none; }
 
 .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 
@@ -201,26 +203,6 @@ input:focus {
 .logged-text { min-width: 0; }
 .logged-title { font-weight: 700; font-size: 18px; }
 
-/* ------------------------------------------------------------- quick add */
-.quick { margin-top: 10px; border-color: var(--accent); }
-/* Four sizes and Custom on one row, always inside the card. */
-.quick-row { display: grid; grid-template-columns: repeat(4, 1fr) 1.3fr; gap: 6px; margin-top: 10px; }
-.qbtn {
-  display: flex; align-items: baseline; justify-content: center; gap: 1px;
-  padding: 15px 2px; border-radius: 12px; border: 1px solid var(--line);
-  background: var(--bg); color: var(--ink);
-  font-family: inherit; font-size: 16px; font-weight: 700; cursor: pointer;
-}
-.qbtn small { font-size: 10px; font-weight: 500; color: var(--muted); }
-.qbtn.custom { font-size: 13px; font-weight: 600; color: var(--accent); }
-.qbtn.on, .qbtn:active {
-  background: var(--accent); border-color: var(--accent); color: #fff;
-}
-.qbtn.on small, .qbtn:active small { color: rgba(255, 255, 255, .85); }
-#custom-ml { margin-top: 10px; }
-#custom-add { margin-top: 10px; }
-#custom-hint:empty { display: none; }
-
 /* ---------------------------------------------------------------- picker */
 /* Sizes sit in an even grid that fills the sheet, four to a row on a phone. */
 .picker {
@@ -267,7 +249,7 @@ input:focus {
 .switch { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--ink); }
 .switch input { width: auto; margin: 0; }
 #sms-send { margin-top: 10px; }
-#day-people:empty, #chart-note:empty { display: none; }
+#day-people:empty, #chart-note:empty, #log-error:empty { display: none; }
 
 /* ---------------------------------------------------------------- toast */
 .toast {

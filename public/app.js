@@ -96,6 +96,7 @@ function enterHome() {
   [...$('who-tabs').children].forEach((x) => x.classList.toggle('active', x.dataset.who === whoMode));
   $('who').textContent = me.name;
   $('goal-ml').textContent = me.goal_ml;
+  hint();
   refresh();
   clearInterval(pollTimer);
   pollTimer = setInterval(refresh, 30000);
@@ -252,79 +253,32 @@ $('who-tabs').addEventListener('click', (e) => {
   if (board) renderChart(board);
 });
 
-// ------------------------------------------------------------- quick add
-// The four sizes log straight away: tapping the number you meant is the
-// confirmation. Anything else goes through Custom, which asks you to confirm.
+// ------------------------------------------------------------- log a cup
+// One tap logs your usual cup and nothing else is asked. A cup that was not
+// that size is fixed afterwards by tapping it in Recent cups.
 let adding = false;
+
+function hint() {
+  $('tap-hint').textContent = `Counts as ${me.cup_ml} ml. Tap a cup below to change it.`;
+}
 
 async function addCup(ml) {
   if (adding) return null;
   adding = true;
-  $('quick-error').textContent = '';
+  $('log-error').textContent = '';
+  $('log-cup').classList.add('busy');
   try {
     const { drink } = await api('POST', '/api/drinks', { day: localDay(), ml });
     toast(`+${drink.ml} ml 💧`);
     refresh();
     return drink;
   } catch (err) {
-    $('quick-error').textContent = err.message;
+    $('log-error').textContent = err.message;
     return null;
-  } finally { adding = false; }
+  } finally { adding = false; $('log-cup').classList.remove('busy'); }
 }
 
-// The button under the ring opens the sizes; tapping one logs it and closes
-// them again, so the screen goes back to just the ring and the board.
-function showSizes(open) {
-  $('quick-card').hidden = !open;
-  $('log-cup').classList.toggle('open', open);
-  $('log-cup').setAttribute('aria-expanded', String(open));
-  if (!open) { showCustom(false); $('quick-error').textContent = ''; }
-}
-
-$('log-cup').addEventListener('click', () => showSizes($('quick-card').hidden));
-
-$('quick').addEventListener('click', async (e) => {
-  const b = e.target.closest('.qbtn');
-  if (!b) return;
-  if (b.id === 'quick-custom') { showCustom($('custom-wrap').hidden); return; }
-  b.classList.add('on');
-  setTimeout(() => b.classList.remove('on'), 350);
-  const drink = await addCup(Number(b.dataset.ml));
-  if (drink) showSizes(false);
-});
-
-function showCustom(open) {
-  $('custom-wrap').hidden = !open;
-  $('quick-custom').classList.toggle('on', open);
-  $('custom-ml').value = '';
-  customTyped();
-  if (open) $('custom-ml').focus();
-}
-
-// The confirm button only exists once there is a sensible number to add.
-function customTyped() {
-  const typed = $('custom-ml').value.trim();
-  const ml = Math.round(Number(typed));
-  const ok = typed !== '' && Number.isFinite(ml) && ml >= 30 && ml <= 3000;
-  $('custom-add').hidden = !ok;
-  if (ok) $('custom-add').textContent = `Add ${ml} ml`;
-  $('custom-hint').textContent = typed !== '' && !ok ? 'Anything from 30 to 3000 ml.' : '';
-}
-
-$('custom-ml').addEventListener('input', customTyped);
-$('custom-ml').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); $('custom-add').click(); }
-});
-
-$('custom-add').addEventListener('click', async () => {
-  const ml = Math.round(Number($('custom-ml').value));
-  if (!(ml >= 30 && ml <= 3000)) return;
-  const btn = $('custom-add');
-  btn.disabled = true; btn.textContent = 'Adding…';
-  const drink = await addCup(ml);
-  btn.disabled = false;
-  if (drink) showSizes(false); else customTyped();
-});
+$('log-cup').addEventListener('click', () => addCup(me.cup_ml));
 
 // ------------------------------------------------------------- ranges
 $('tabs').addEventListener('click', (e) => {
@@ -492,7 +446,7 @@ $('set-save').addEventListener('click', async () => {
     const { user } = await api('PATCH', '/api/me', { cup_ml: $('set-cup').value, goal_ml: $('set-goal').value });
     me = user;
     $('goal-ml').textContent = me.goal_ml;
-    closeSettings(); toast('Saved'); refresh();
+    closeSettings(); hint(); toast('Saved'); refresh();
   } catch (err) { toast(err.message); }
 });
 

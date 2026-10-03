@@ -119,6 +119,7 @@ try {
   assert.match(a.setCookie, /^sip=.*HttpOnly/, 'session cookie set');
   assert.match(a.setCookie, /Max-Age=345[0-9]{5}/, 'cookie lasts about 400 days');
   assert.equal(a.data.user.group, 'everyone', 'one shared board');
+  assert.equal(a.data.user.cup_ml, 250, 'a new account starts at the 250 ml cup the button logs');
   const b = await call('POST', '/api/join', { name: `Ben ${stamp}` });
   assert.equal((await call('POST', '/api/join', { name: `ana ${stamp}` })).data.token, a.data.token, 'same name, same account');
   assert.equal((await call('POST', '/api/join', { name: '' })).status, 400, 'a name is required');
@@ -140,7 +141,7 @@ try {
   // One tap, no photo: that is the normal way to log a cup now.
   const tap = await call('POST', '/api/drinks', { photo: null, day: TODAY }, a.data.token);
   assert.equal(tap.status, 200, JSON.stringify(tap.data));
-  assert.equal(tap.data.drink.ml, 350, 'counts as the default cup');
+  assert.equal(tap.data.drink.ml, 250, 'counts as the default cup');
   assert.equal(tap.data.drink.source, 'default');
   assert.equal(tap.data.drink.photo_id, null, 'nothing stored');
   assert.equal((await call('DELETE', `/api/drinks/${tap.data.drink.id}`, null, a.data.token)).status, 200,
@@ -150,7 +151,7 @@ try {
 
   const d1 = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY }, a.data.token);
   assert.equal(d1.status, 200, JSON.stringify(d1.data));
-  assert.equal(d1.data.drink.ml, 350); assert.equal(d1.data.drink.source, 'default');
+  assert.equal(d1.data.drink.ml, 250); assert.equal(d1.data.drink.source, 'default');
   const d2 = await call('POST', '/api/drinks', { photo: jpeg, day: TODAY, ml: 500 }, b.data.token);
   assert.equal(d2.data.drink.source, 'manual');
   await call('POST', '/api/drinks', { photo: jpeg, day: LAST_WEEK }, b.data.token);
@@ -164,7 +165,10 @@ try {
   assert.deepEqual(mine(today.data.board).map((r) => [r.name, r.ml, r.cups, r.streak]),
     [[`Ana ${stamp}`, 750, 1, 0], [`Ben ${stamp}`, 500, 1, 0]]);
   const all = await call('GET', `/api/board?range=all&day=${TODAY}`, null, a.data.token);
-  assert.deepEqual(mine(all.data.board).map((r) => [r.name, r.ml]), [[`Ben ${stamp}`, 850], [`Ana ${stamp}`, 750]]);
+  // Ben's 500 today plus a default 250 cup last week ties Ana's 750, and a tie
+  // goes to whoever drank more cups to get there.
+  assert.deepEqual(mine(all.data.board).map((r) => [r.name, r.ml, r.cups]),
+    [[`Ben ${stamp}`, 750, 2], [`Ana ${stamp}`, 750, 1]]);
   const week = await call('GET', `/api/board?range=week&day=${TODAY}`, null, a.data.token);
   assert.equal(week.data.board.find((r) => r.name === `Ben ${stamp}`).ml, 500);
   // weeks start on Sunday, and never start after today
@@ -189,7 +193,7 @@ try {
   assert.deepEqual([bar(chart.data.days, aId, TODAY).ml, bar(chart.data.days, aId, TODAY).cups], [750, 1],
     'my own bar for today');
   assert.equal(bar(chart.data.days, bId, TODAY).ml, 500, 'a friend gets their own bar on the same day');
-  assert.equal(bar(chart.data.days, bId, LAST_WEEK).ml, 350, 'and on earlier days');
+  assert.equal(bar(chart.data.days, bId, LAST_WEEK).ml, 250, 'and on earlier days');
   assert.ok(chart.data.days.every((r) => r.day && r.user_id && r.ml > 0 && r.cups > 0),
     'every bar carries a day, a person and a real total');
   const todayBars = (await call('GET', `/api/board?range=today&day=${TODAY}`, null, a.data.token)).data.days;
@@ -203,7 +207,7 @@ try {
   assert.equal(addedBack.status, 200, 'a cup can be added to an earlier day');
   assert.equal(addedBack.data.drink.day, LAST_WEEK);
   const dayView2 = await call('GET', `/api/day?day=${LAST_WEEK}`, null, b.data.token);
-  assert.deepEqual(dayView2.data.cups.map((c) => c.ml), [350, 400], 'in the order logged');
+  assert.deepEqual(dayView2.data.cups.map((c) => c.ml), [250, 400], 'in the order logged');
   assert.equal((await call('DELETE', `/api/drinks/${addedBack.data.drink.id}`, null, b.data.token)).status, 200);
   // the future is refused
   const future = await call('POST', '/api/drinks', { day: iso(3), ml: 350 }, b.data.token);
